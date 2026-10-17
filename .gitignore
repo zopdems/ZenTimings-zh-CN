@@ -359,3 +359,6 @@ WPF/Resources/PawnIO/PawnIO_setup.exe
 # ZenTimings crash logs
 crash.log
 crash.old.log
+
+# 便携版打包产物（由 Scripts/make_portable.py 生成，不入库）
+ZenTimings-zhCN-portable-*.zip
