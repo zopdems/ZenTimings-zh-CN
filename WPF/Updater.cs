@@ -1,0 +1,578 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Windows;
+using System.Xml.Serialization;
+using ZenTimings.Common;
+using ZenTimings.Encryption;
+using ZenTimings.Helpers;
+using ZenTimings.Settings;
+using ZenTimings.Windows;
+using MessageBox = ZenTimings.Theming.MessageBox;
+using MessageBoxButton = ZenTimings.Theming.MessageBoxButton;
+using MessageBoxImage = ZenTimings.Theming.MessageBoxImage;
+using MessageBoxResult = ZenTimings.Theming.MessageBoxResult;
+using ZenTimings.Localization;
+
+namespace ZenTimings
+{
+    public class Updater
+    {
+        public event EventHandler UpdateCheckCompleteEvent;
+
+        private static bool manual;
+        private static string ChangelogText { get; set; }
+        private static readonly UpdaterPersistenceProvider persistence = new UpdaterPersistenceProvider();
+
+        private const string updateUrl = "https://zentimings.com/Update.xml";
+        private const string signatureUrl = "https://zentimings.com/Update.xml.sig";
+        private const string betaUpdateUrl = "https://zentimings.com/Update_beta.xml";
+        private const string betaSignatureUrl = "https://zentimings.com/Update_beta.xml.sig";
+
+        protected virtual void OnUpdateCheckCompleteEvent(EventArgs e)
+        {
+            UpdateCheckCompleteEvent?.Invoke(this, e);
+        }
+
+        private const string GitHubReleaseBaseUrl = "https://github.com/irusanov/ZenTimings/releases/download";
+
+        private static Version InstalledVersion
+        {
+            get
+            {
+                var attr = (AssemblyFileVersionAttribute)Attribute.GetCustomAttribute(
+                    Assembly.GetExecutingAssembly(), typeof(AssemblyFileVersionAttribute), false);
+                return new Version(attr.Version);
+            }
+        }
+
+        private static AppSettings.ReleaseChannel Channel => AppSettings.Instance.UpdateReleaseChannel;
+
+        public void CheckForUpdate(bool manualUpdate = false, bool suppressNetworkErrorDialog = false)
+        {
+            if (!manualUpdate) SplashWindow.Loading(Loc.Get("Loc_Splash_CheckingUpdates"));
+
+            manual = manualUpdate;
+
+            try
+            {
+                UpdaterArgs updaterArgs = FetchLatestUpdateInfo(out bool isBeta);
+                if (updaterArgs == null)
+                {
+                    if (manual)
+                        OnUpdateCheckCompleteEvent(new EventArgs());
+                    return;
+                }
+
+                ProcessUpdateInfo(updaterArgs, isBeta);
+            }
+            catch (WebException ex)
+            {
+                Debug.WriteLine($"Update check WebException: {ex.Message}");
+
+                if (!suppressNetworkErrorDialog)
+                {
+                    string message = Loc.Get("Loc_Msg_UpdateServerUnreachable");
+                    MessageBox.Show(message, Loc.Get("Loc_Update_CheckFailed"),
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                //else
+                //{
+                //    SplashWindow.Loading("Update check failed: no connection");
+                //}
+            }
+            catch (CryptographicException ex)
+            {
+                Debug.WriteLine($"Update check crypto error: {ex.Message}");
+
+                //if (manual)
+                {
+                    MessageBox.Show(ex.Message, Loc.Get("Loc_Update_CheckFailed"),
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                //else
+                //{
+                //    SplashWindow.Loading("Update check failed: verification error");
+                //}
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Update check error: {ex.Message}");
+
+                //if (manual)
+                {
+                    MessageBox.Show(
+                        Loc.Format("Loc_Msg_UpdateCheckError", ex.Message),
+                        Loc.Get("Loc_Update_CheckFailed"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+                //else
+                //{
+                //    SplashWindow.Loading("Update check failed");
+                //}
+            }
+        }
+
+        // Release checks the stable feed only and Beta the beta feed only. Any checks both and the newer one wins,
+        // so those users also get a stable release that is newer than the last beta.
+        private UpdaterArgs FetchLatestUpdateInfo(out bool isBeta)
+        {
+            isBeta = false;
+            var channel = Channel;
+
+            if (channel == AppSettings.ReleaseChannel.Beta)
+            {
+                isBeta = true;
+                return FetchUpdateInfo(betaUpdateUrl, betaSignatureUrl);
+            }
+
+            bool checkBeta = channel == AppSettings.ReleaseChannel.Any;
+            Exception stableError = null;
+            UpdaterArgs stable = null;
+
+            try
+            {
+                stable = FetchUpdateInfo(updateUrl, signatureUrl);
+            }
+            catch (Exception ex) when (checkBeta && !(ex is CryptographicException))
+            {
+                // Beta may still be available, report the stable error only if that fails as well
+                stableError = ex;
+            }
+
+            if (!checkBeta)
+                return stable;
+
+            UpdaterArgs beta = null;
+            try
+            {
+                beta = FetchUpdateInfo(betaUpdateUrl, betaSignatureUrl);
+            }
+            catch (CryptographicException ex)
+            {
+                if (stable == null)
+                    throw;
+
+                MessageBox.Show(
+                    ex.Message + Environment.NewLine + Environment.NewLine +
+                    Loc.Get("Loc_Msg_BetaChannelSkipped"),
+                    Loc.Get("Loc_Update_BetaCheckFailed"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Beta update check failed: {ex.Message}");
+                if (stableError != null)
+                    throw stableError;
+            }
+
+            if (beta == null)
+                return stable;
+            if (stable == null || new Version(beta.Version) > new Version(stable.Version))
+            {
+                isBeta = true;
+                return beta;
+            }
+
+            return stable;
+        }
+
+        private UpdaterArgs FetchUpdateInfo(string xmlUrl, string sigUrl)
+        {
+            // After upgrading to .NET 4.7.2, the best supported TLS version is automatically negotiated, so we don't need to force TLS 1.2 anymore.
+            //ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            using (var client = new TimeoutWebClient())
+            {
+                byte[] xmlData = client.DownloadData(xmlUrl);
+                byte[] signature = client.DownloadData(sigUrl);
+
+                if (!UpdaterSignature.Verify(xmlData, signature))
+                {
+                    throw new CryptographicException(
+                        "Update metadata signature verification failed. " +
+                        "The update XML may have been tampered with. " +
+                        Environment.NewLine +
+                        "The update has been cancelled for security reasons.");
+                }
+
+                string xml = Encoding.UTF8.GetString(xmlData);
+                using (var reader = new StringReader(xml))
+                {
+                    var serializer = new XmlSerializer(typeof(UpdaterArgs));
+                    return serializer.Deserialize(reader) as UpdaterArgs;
+                }
+            }
+        }
+
+        private void ProcessUpdateInfo(UpdaterArgs updaterArgs, bool isBeta)
+        {
+            var remoteVersion = new Version(updaterArgs.Version);
+            var installedVersion = InstalledVersion;
+
+            ChangelogText = $"\nChangelog{Environment.NewLine}";
+            if (updaterArgs.Changes != null)
+            {
+                foreach (string change in updaterArgs.Changes)
+                    ChangelogText += $" - {change}{Environment.NewLine}";
+            }
+
+            bool isUpdateAvailable = remoteVersion > installedVersion;
+
+            if (isUpdateAvailable && (manual || !persistence.GetSkippedVersion().Equals(remoteVersion)))
+            {
+                var shortVersion = string.Join(".", updaterArgs.Version.Split('.'), 0, 2);
+                var zipSuffix = isBeta ? "_beta" : string.Empty;
+                var zipFileName = $"ZenTimings_v{shortVersion}{zipSuffix}.zip";
+                var downloadUrl = $"{GitHubReleaseBaseUrl}/v{shortVersion}/{zipFileName}";
+                var checksumUrl = $"{GitHubReleaseBaseUrl}/v{shortVersion}/{zipFileName}.sha256";
+                var zipSignatureUrl = $"{GitHubReleaseBaseUrl}/v{shortVersion}/{zipFileName}.sig";
+
+                var dialog = new UpdateAvailableDialog(updaterArgs.Version, installedVersion, updaterArgs.Changes, !manual, isBeta);
+                if (Application.Current?.MainWindow != null && Application.Current.MainWindow.IsLoaded && Application.Current.MainWindow != dialog)
+                {
+                    dialog.Owner = Application.Current.MainWindow;
+                    dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+                }
+                bool accepted = dialog.ShowDialog() == true;
+
+                if (!manual) SplashWindow.HideIfOpen();
+
+                if (accepted)
+                {
+                    try
+                    {
+                        if (DownloadAndApplyUpdate(downloadUrl, checksumUrl, zipSignatureUrl, installedVersion))
+                        {
+                            if (!manual) SplashWindow.Stop();
+                            Application.Current.Shutdown();
+                            Environment.Exit(0);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        MessageBox.Show(
+                            exception.Message,
+                            exception.GetType().ToString(),
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Error);
+                    }
+                }
+                else if (!manual)
+                {
+                    if (dialog.DontAskAgain)
+                    {
+                        persistence.SetSkippedVersion(remoteVersion);
+                    }
+                    SplashWindow.ShowIfOpen();
+                }
+            }
+            else if (manual)
+            {
+                OnUpdateCheckCompleteEvent(new EventArgs());
+            }
+        }
+
+        private bool DownloadAndApplyUpdate(string downloadUrl, string checksumUrl, string zipSignatureUrl, Version installedVersion)
+        {
+            var progressWindow = new UpdateProgressWindow();
+            progressWindow.Show();
+
+            try
+            {
+                return DownloadAndApplyUpdateCore(downloadUrl, checksumUrl, zipSignatureUrl, installedVersion, progressWindow);
+            }
+            catch
+            {
+                progressWindow.CloseFromUpdater();
+                throw;
+            }
+        }
+
+        private static void ShowUpdateFailed(UpdateProgressWindow progressWindow, string message)
+        {
+            progressWindow.CloseFromUpdater();
+            MessageBox.Show(
+                message,
+                Loc.Get("Loc_Update_Failed"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+
+        private bool DownloadAndApplyUpdateCore(string downloadUrl, string checksumUrl, string zipSignatureUrl,
+            Version installedVersion, UpdateProgressWindow progressWindow)
+        {
+            string expectedHash;
+            byte[] zipSignature;
+            byte[] zipData;
+
+            using (var client = new TimeoutWebClient())
+            {
+                // Download checksum and signature first (small files, fail early)
+                progressWindow.SetIndeterminate("Downloading verification files...");
+
+                try
+                {
+                    // Checksum file format: "<hex_hash>" or "<hex_hash>  <filename>"
+                    expectedHash = client.DownloadString(checksumUrl).Trim().Split(' ')[0].Trim();
+                }
+                catch (WebException)
+                {
+                    ShowUpdateFailed(progressWindow,
+                        "Could not download the checksum file.\n" +
+                        "The update has been cancelled for security reasons.");
+                    return false;
+                }
+
+                if (progressWindow.IsCancelled)
+                    return false;
+
+                try
+                {
+                    zipSignature = client.DownloadData(zipSignatureUrl);
+                }
+                catch (WebException)
+                {
+                    ShowUpdateFailed(progressWindow,
+                        "Could not download the signature file.\n" +
+                        "The update has been cancelled for security reasons.");
+                    return false;
+                }
+
+                if (progressWindow.IsCancelled)
+                    return false;
+
+                // Download the update zip into memory with progress reporting.
+                // The same bytes are verified and extracted, so nothing can be
+                // swapped on disk between verification and use.
+                progressWindow.SetStatus("Downloading update...");
+                progressWindow.SetProgress(0, "Connecting...");
+
+                var downloadComplete = new ManualResetEvent(false);
+                Exception downloadError = null;
+                bool downloadCancelled = false;
+                byte[] downloadedData = null;
+
+                client.DownloadProgressChanged += (sender, e) =>
+                {
+                    if (progressWindow.IsCancelled)
+                    {
+                        client.CancelAsync();
+                        return;
+                    }
+
+                    string detail = $"{e.BytesReceived / 1024:N0} KB";
+                    if (e.TotalBytesToReceive > 0)
+                        detail += $" / {e.TotalBytesToReceive / 1024:N0} KB";
+
+                    progressWindow.SetProgress(e.ProgressPercentage, detail);
+                };
+
+                client.DownloadDataCompleted += (sender, e) =>
+                {
+                    if (e.Cancelled)
+                        downloadCancelled = true;
+                    else if (e.Error != null)
+                        downloadError = e.Error;
+                    else
+                        downloadedData = e.Result;
+                    downloadComplete.Set();
+                };
+
+                client.DownloadDataAsync(new Uri(downloadUrl));
+
+                // Pump WPF messages while waiting for download to complete
+                bool cancelRequested = false;
+                while (!downloadComplete.WaitOne(50))
+                {
+                    if (progressWindow.IsCancelled && !cancelRequested)
+                    {
+                        cancelRequested = true;
+                        client.CancelAsync();
+                    }
+
+                    Application.Current.Dispatcher.Invoke(
+                        System.Windows.Threading.DispatcherPriority.Background,
+                        new Action(delegate { }));
+                }
+
+                if (progressWindow.IsCancelled || downloadCancelled)
+                {
+                    progressWindow.CloseFromUpdater();
+                    return false;
+                }
+
+                if (downloadError != null || downloadedData == null)
+                {
+                    ShowUpdateFailed(progressWindow,
+                        $"Failed to download the update:\n{downloadError?.Message ?? "No data received."}");
+                    return false;
+                }
+
+                zipData = downloadedData;
+            }
+
+            // Verify checksum
+            progressWindow.SetIndeterminate("Verifying checksum...");
+
+            string actualHash = ComputeHash(zipData, "SHA256");
+            if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowUpdateFailed(progressWindow,
+                    "Update verification failed. The downloaded file checksum does not match the expected value.\n" +
+                    "The update has been cancelled for security reasons.");
+                return false;
+            }
+
+            // Verify RSA signature
+            progressWindow.SetIndeterminate("Verifying digital signature...");
+
+            if (!UpdaterSignature.Verify(zipData, zipSignature))
+            {
+                ShowUpdateFailed(progressWindow,
+                    "Update signature verification failed. The downloaded file may have been tampered with.\n" +
+                    "The update has been cancelled for security reasons.");
+                return false;
+            }
+
+            // Extract the verified bytes into a fresh directory that only
+            // Administrators/SYSTEM can modify (the update script runs elevated).
+            progressWindow.SetIndeterminate("Extracting update...");
+
+            string workDir = SecureDirectoryHelper.CreateAdminOnlyDirectory("Update");
+            string extractDir = Path.Combine(workDir, "extracted");
+
+            try
+            {
+                Directory.CreateDirectory(extractDir);
+                SecureDirectoryHelper.ExtractZip(zipData, extractDir);
+            }
+            catch
+            {
+                CleanupTempDir(workDir);
+                throw;
+            }
+
+            // Find the actual content directory (zip may contain a single root folder)
+            string sourceDir = extractDir;
+            string[] subDirs = Directory.GetDirectories(extractDir);
+            if (subDirs.Length == 1 && Directory.GetFiles(extractDir).Length == 0)
+            {
+                sourceDir = subDirs[0];
+            }
+
+            // Anti-downgrade: verify the extracted exe is actually newer than what's installed
+            progressWindow.SetIndeterminate("Verifying update...");
+
+            string extractedExe = Path.Combine(sourceDir, "ZenTimings.exe");
+            if (!File.Exists(extractedExe))
+            {
+                CleanupTempDir(workDir);
+                ShowUpdateFailed(progressWindow,
+                    "The downloaded update does not contain ZenTimings.exe.\n" +
+                    "The update has been cancelled.");
+                return false;
+            }
+
+            // An unreadable version counts as not newer (and must not leak the work directory via an exception).
+            Version extractedVersion;
+            if (!Version.TryParse(FileVersionInfo.GetVersionInfo(extractedExe).FileVersion, out extractedVersion) ||
+                extractedVersion <= installedVersion)
+            {
+                CleanupTempDir(workDir);
+                ShowUpdateFailed(progressWindow,
+                    $"The downloaded version ({extractedVersion}) is not newer than the installed version ({installedVersion}).\n" +
+                    "The update has been cancelled for security reasons.");
+                return false;
+            }
+
+            // Create and run update batch script (in the same protected directory)
+            progressWindow.SetIndeterminate("Applying update...");
+
+            string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
+            int pid = Process.GetCurrentProcess().Id;
+            string batchPath = Path.Combine(workDir, "update.cmd");
+
+            var sb = new StringBuilder();
+            sb.AppendLine("@echo off");
+            sb.AppendLine(":wait");
+            sb.AppendLine($"tasklist /fi \"PID eq {pid}\" 2>NUL | find /I \"ZenTimings\" >NUL");
+            sb.AppendLine("if %errorlevel%==0 (");
+            sb.AppendLine("    timeout /t 1 /nobreak >NUL");
+            sb.AppendLine("    goto wait");
+            sb.AppendLine(")");
+            sb.AppendLine($"xcopy /s /y /q \"{sourceDir}\\*\" \"{appDir}\\\"");
+            sb.AppendLine($"start \"\" \"{Path.Combine(appDir, "ZenTimings.exe")}\"");
+            sb.AppendLine($"rmdir /s /q \"{workDir}\"");
+
+            try
+            {
+                File.WriteAllText(batchPath, sb.ToString());
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+                    Arguments = $"/c \"{batchPath}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                });
+            }
+            catch
+            {
+                CleanupTempDir(workDir);
+                throw;
+            }
+
+            progressWindow.CloseFromUpdater();
+            return true;
+        }
+
+        private static void CleanupTempDir(string tempDir)
+        {
+            SecureDirectoryHelper.TryDelete(tempDir);
+        }
+
+        private static string ComputeHash(byte[] data, string algorithm)
+        {
+            using (var ha = HashAlgorithm.Create(algorithm))
+            {
+                if (ha == null)
+                    throw new NotSupportedException($"Hash algorithm '{algorithm}' is not supported.");
+
+                byte[] hash = ha.ComputeHash(data);
+                var sb = new StringBuilder(hash.Length * 2);
+                foreach (byte b in hash)
+                    sb.Append(b.ToString("x2"));
+                return sb.ToString();
+            }
+        }
+
+        /// <summary>
+        /// WebClient with a bounded timeout for synchronous requests, so an
+        /// unreachable update server does not block the UI for the default ~100 s.
+        /// </summary>
+        private sealed class TimeoutWebClient : WebClient
+        {
+            private const int DefaultTimeoutMs = 15000;
+
+            protected override WebRequest GetWebRequest(Uri address)
+            {
+                WebRequest request = base.GetWebRequest(address);
+                if (request != null)
+                {
+                    request.Timeout = DefaultTimeoutMs;
+                    if (request is HttpWebRequest httpRequest)
+                        httpRequest.ReadWriteTimeout = DefaultTimeoutMs;
+                }
+                return request;
+            }
+        }
+    }
+}

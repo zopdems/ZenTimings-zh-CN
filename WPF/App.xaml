@@ -1,0 +1,18 @@
+﻿<Application x:Class="ZenTimings.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 界面文本（默认英文）。启动时 LocalizationManager 会按需换成对应语言的字典。 -->
+                <ResourceDictionary Source="pack://application:,,,/Localization/Strings.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/Themes/Base.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/Themes/AppIcons.xaml" />
+                <!-- Base colors until the selected theme is applied (the theme is merged on top at startup) -->
+                <ResourceDictionary Source="pack://application:,,,/Theming/ColorSchemes/Dark.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/Theming/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,64 @@
+﻿<local:ThemedWindow
+    xmlns:local="clr-namespace:ZenTimings"
+    xmlns:theming="clr-namespace:ZenTimings.Theming"
+    x:Class="ZenTimings.Windows.Changelog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="clr-namespace:ZenTimings.Converters"
+    xmlns:controls="clr-namespace:ZenTimings.Controls"
+    mc:Ignorable="d"
+    Style="{DynamicResource WindowStyles}"
+    Title="{DynamicResource Loc_Changelog_Title}"
+    MaxHeight="580"
+    Width="500"
+    UseLayoutRounding="True"
+    ResizeMode="CanResize"
+    SizeToContent="Height"
+    WindowStartupLocation="CenterScreen"
+    Topmost="True" Icon="/ZenTimings;component/Resources/new-icon/16.png">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Grid.Row="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Orientation="Vertical" Margin="15,15,5,15" Grid.ColumnSpan="6" Grid.Row="0">
+                    <!-- @TODO: add binding to show beta text on BETA builds only -->
+                    <!--TextBlock 
+                        Text="{DynamicResource Loc_Changelog_BetaWelcome}"
+                        Foreground="{DynamicResource {x:Static theming:ThemeBrushes.WarningBrush}}"
+                        HorizontalAlignment="Left"
+                        Padding="0, 0, 0, 14"
+                        TextWrapping="WrapWithOverflow" /-->
+
+                    <!--TextBlock 
+                        Text="{DynamicResource Loc_Changelog_ManyChanges}"
+                        Foreground="{DynamicResource {x:Static theming:ThemeBrushes.WarningBrush}}"
+                        HorizontalAlignment="Left"
+                        Padding="0, 0, 0, 14"
+                        TextWrapping="WrapWithOverflow" /-->
+
+                    <!-- TextBlock Text="{DynamicResource Loc_Common_Changelog}" FontSize="14" FontWeight="Bold" Style="{DynamicResource ValueStyles}" Height="auto" HorizontalAlignment="Left" /-->
+                    <TextBlock Text="{Binding Version, Mode=OneWay}" FontSize="13" Style="{DynamicResource ValueStyles}" Height="auto" HorizontalAlignment="Left" Margin="0,0,0,4" />
+
+                    <controls:ChangelogItem Text="{DynamicResource Loc_Changelog_AvFix}" />
+                    <controls:ChangelogItem Text="{DynamicResource Loc_Changelog_SuperIo}" />
+                    <controls:ChangelogItem Text="{DynamicResource Loc_Changelog_BetaDropdown}" />
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+        <Border Padding="4 10" Grid.Row="1">
+            <Button x:Name="Changelog_Close" Content="{DynamicResource Loc_Common_OK}" Width="80" IsCancel="True" />
+        </Border>
+    </Grid>
+</local:ThemedWindow>

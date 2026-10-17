@@ -1,0 +1,410 @@
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Threading;
+using ZenStates.Core.Hardware;
+using ZenTimings.Common;
+using ZenTimings.Helpers;
+using ZenTimings.Localization;
+using ZenTimings.Settings;
+using ZenTimings.ViewModels;
+using static ZenTimings.Settings.AppSettings;
+
+namespace ZenTimings.Windows
+{
+    /// <summary>
+    /// Interaction logic for OptionsDialog.xaml
+    /// </summary>
+    public partial class OptionsDialog : ThemedWindow
+    {
+        internal readonly AppSettings appSettings = AppSettings.Instance;
+        internal readonly SystemInfo _systemInfo = CpuSingleton.Instance.systemInfo;
+        private readonly DispatcherTimer timerInstance;
+        private DispatcherTimer notificationTimer;
+        private Theme _Theme;
+        private readonly bool _AdvancedMode;
+        private readonly ImpedanceTableSource _ImpedanceTableSource;
+        private readonly int _CornerRadius;
+        private readonly MainViewModel _mainViewModel;
+        // 填充语言下拉框时抑制一次 SelectionChanged，避免把"回显当前设置"当成用户切换。
+        private bool _suppressLanguageChange;
+
+        public OptionsDialog(DispatcherTimer timer, MainViewModel mainViewModel)
+        {
+            timerInstance = timer;
+            _mainViewModel = mainViewModel;
+            _Theme = appSettings.AppTheme;
+            _AdvancedMode = appSettings.AdvancedMode;
+            _ImpedanceTableSource = appSettings.ImpedanceTableSrc;
+            _CornerRadius = appSettings.CornerRadius;
+
+            InitializeComponent();
+
+            LoadSettingsToUi();
+        }
+
+        private void LoadSettingsToUi(AppSettings sourceSettings = null)
+        {
+            var settings = sourceSettings ?? appSettings;
+
+            checkBoxAutoRefresh.IsChecked = settings.AutoRefresh;
+            checkBoxAutoRefresh.IsEnabled = settings.AdvancedMode;
+            checkBoxAdvancedMode.IsChecked = settings.AdvancedMode;
+            checkBoxCheckUpdate.IsChecked = settings.CheckForUpdates;
+            comboBoxReleaseChannel.SelectedIndex = (int)settings.UpdateReleaseChannel;
+            checkBoxSavePosition.IsChecked = settings.SaveWindowPosition;
+            checkBoxWindowSnapping.IsChecked = settings.EnableWindowSnapping;
+            checkBoxMinimizeToTray.IsChecked = settings.MinimizeToTray;
+            checkBoxAutostart.IsChecked = settings.AutostartWithWindows;
+            numericUpDownAutostartDelay.IsEnabled = settings.AutostartWithWindows;
+            numericUpDownAutostartDelay.Text = settings.AutostartDelaySeconds.ToString();
+            checkBoxStartMinimized.IsChecked = settings.StartMinimized;
+            checkBoxSingleInstance.IsChecked = settings.SingleInstance;
+            comboBoxCornerRadius.SelectedIndex = settings.CornerRadius;
+            // Rounded corners are a DWM feature of Windows 11; keep the saved value but grey the option out elsewhere.
+            bool cornersSupported = ZenTimings.Utils.WindowUtils.SupportsCornerPreference;
+            labelCornerRadius.IsEnabled = cornersSupported;
+            comboBoxCornerRadius.IsEnabled = cornersSupported;
+            comboBoxCornerRadius.ToolTip = cornersSupported ? null : Loc.Get("Loc_Msg_RequiresWin11");
+            System.Windows.Controls.ToolTipService.SetShowOnDisabled(comboBoxCornerRadius, true);
+            numericUpDownRefreshInterval.IsEnabled = settings.AutoRefresh && settings.AdvancedMode;
+            numericUpDownRefreshInterval.Text = settings.AutoRefreshInterval.ToString();
+            msText.IsEnabled = numericUpDownRefreshInterval.IsEnabled;
+            comboBoxTheme.SelectedItem = FindThemeItem(settings.AppTheme);
+            comboBoxScreenshot.SelectedIndex = (int)settings.ScreenshotMode;
+            comboBoxImpedanceSource.SelectedIndex = (int)settings.ImpedanceTableSrc;
+            textBoxScreenshotPath.Text = settings.ScreenshotSaveLocation;
+            checkBoxAutoUninstallDriver.IsChecked = settings.AutoUninstallDriver;
+            var notificationLevelIndex = settings.AutoUninstallDriverNotificationLevel + 1;
+            if (notificationLevelIndex > comboBoxDriverNotification.Items.Count - 1)
+                notificationLevelIndex = comboBoxDriverNotification.Items.Count - 1;
+            comboBoxDriverNotification.SelectedIndex = notificationLevelIndex;
+            LoadVoltageSensorSources(settings);
+            LoadLanguages(settings);
+        }
+
+        /// <summary>填充语言下拉框。显示名始终用该语言自身书写，方便不熟悉当前界面语言的用户辨认。</summary>
+        private void LoadLanguages(AppSettings settings)
+        {
+            _suppressLanguageChange = true;
+
+            try
+            {
+                comboBoxLanguage.Items.Clear();
+
+                foreach (string code in LocalizationManager.SupportedLanguages)
+                {
+                    comboBoxLanguage.Items.Add(new System.Windows.Controls.ComboBoxItem
+                    {
+                        Content = LocalizationManager.GetDisplayName(code),
+                        Tag = code,
+                    });
+                }
+
+                string current = string.IsNullOrWhiteSpace(settings.Language)
+                    ? LocalizationManager.Instance.Language
+                    : LocalizationManager.Normalize(settings.Language);
+
+                comboBoxLanguage.SelectedItem = comboBoxLanguage.Items
+                    .Cast<System.Windows.Controls.ComboBoxItem>()
+                    .FirstOrDefault(item => string.Equals(item.Tag as string, current, StringComparison.OrdinalIgnoreCase))
+                    ?? comboBoxLanguage.Items[0];
+            }
+            finally
+            {
+                _suppressLanguageChange = false;
+            }
+        }
+
+        private void ComboBoxLanguage_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_suppressLanguageChange)
+                return;
+
+            if (comboBoxLanguage.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string code)
+            {
+                appSettings.Language = code;
+                LocalizationManager.Instance.Apply(code);
+                appSettings.Save();
+            }
+        }
+
+        private void LoadVoltageSensorSources(AppSettings settings)
+        {
+            labelVddioSource.Text = _mainViewModel.CpuFamily >= ZenStates.Core.Cpu.Family.FAMILY_19H
+                ? "VDDIO"
+                : "VDIMM";
+
+            LoadVoltageSensorSources(comboBoxVsocSensorSource, labelVsocSource, MainViewModel.VoltageRail.Vsoc, settings.VsocSensorSource);
+            LoadVoltageSensorSources(comboBoxVddioSensorSource, labelVddioSource, MainViewModel.VoltageRail.Vddio, settings.VddioSensorSource);
+            LoadVoltageSensorSources(comboBoxVmiscSensorSource, labelVmiscSource, MainViewModel.VoltageRail.Vmisc, settings.VmiscSensorSource);
+
+            bool supported = _mainViewModel.IsVoltageSourceSelectionSupported;
+            foreach (var element in new UIElement[] { labelImpedanceSource, comboBoxImpedanceSource, labelVsocSource, comboBoxVsocSensorSource, labelVddioSource, comboBoxVddioSensorSource, labelVmiscSource, comboBoxVmiscSensorSource })
+                element.IsEnabled = supported;
+        }
+
+        private void LoadVoltageSensorSources(System.Windows.Controls.ComboBox comboBox, System.Windows.Controls.TextBlock label,
+            MainViewModel.VoltageRail rail, VoltageSensorSource selectedSource)
+        {
+            comboBox.Items.Clear();
+            label.Visibility = Visibility.Visible;
+            comboBox.Visibility = Visibility.Visible;
+
+            foreach (var source in _mainViewModel.GetAvailableVoltageSources(rail))
+            {
+                string displayText;
+                if (source == VoltageSensorSource.Auto)
+                {
+                    displayText = "Auto";
+                }
+                else if (source == VoltageSensorSource.SuperIo)
+                {
+                    displayText = "Super I/O";
+                }
+                else
+                {
+                    displayText = source.ToString().ToUpperInvariant();
+                }
+
+                comboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
+                {
+                    Content = displayText,
+                    Tag = source
+                });
+            }
+
+            // Nothing on this system can report the rail: hide the whole row instead of showing an empty combo
+            if (comboBox.Items.Count == 0)
+            {
+                label.Visibility = Visibility.Collapsed;
+                comboBox.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var selectedItem = comboBox.Items.Cast<System.Windows.Controls.ComboBoxItem>()
+                .FirstOrDefault(item => (VoltageSensorSource)item.Tag == selectedSource);
+            comboBox.SelectedItem = selectedItem ?? comboBox.Items.Cast<System.Windows.Controls.ComboBoxItem>().FirstOrDefault();
+        }
+
+        private void SaveSettingsFromUi()
+        {
+            appSettings.AutoRefresh = (bool)checkBoxAutoRefresh.IsChecked;
+            appSettings.AutoRefreshInterval = Convert.ToInt32(numericUpDownRefreshInterval.Text);
+            appSettings.AdvancedMode = (bool)checkBoxAdvancedMode.IsChecked;
+            appSettings.CheckForUpdates = (bool)checkBoxCheckUpdate.IsChecked;
+            appSettings.UpdateReleaseChannel = (ReleaseChannel)comboBoxReleaseChannel.SelectedIndex;
+            appSettings.SaveWindowPosition = (bool)checkBoxSavePosition.IsChecked;
+            appSettings.EnableWindowSnapping = (bool)checkBoxWindowSnapping.IsChecked;
+            appSettings.MinimizeToTray = (bool)checkBoxMinimizeToTray.IsChecked;
+            appSettings.AutostartWithWindows = (bool)checkBoxAutostart.IsChecked;
+            appSettings.AutostartDelaySeconds = Convert.ToInt32(numericUpDownAutostartDelay.Text);
+            appSettings.StartMinimized = (bool)checkBoxStartMinimized.IsChecked;
+            if (!StartupHelper.SetAutostart(appSettings.AutostartWithWindows, appSettings.AutostartDelaySeconds))
+            {
+                // Keep the setting in sync with the actual scheduled task state
+                appSettings.AutostartWithWindows = StartupHelper.IsAutostartEnabled();
+                checkBoxAutostart.IsChecked = appSettings.AutostartWithWindows;
+                numericUpDownAutostartDelay.IsEnabled = appSettings.AutostartWithWindows;
+                ZenTimings.Theming.MessageBox.Show(
+                    Loc.Get("Loc_Msg_AutostartFailed"),
+                    Loc.Get("Loc_Error_Title"),
+                    ZenTimings.Theming.MessageBoxButton.OK,
+                    ZenTimings.Theming.MessageBoxImage.Error);
+            }
+            appSettings.SingleInstance = (bool)checkBoxSingleInstance.IsChecked;
+            if (comboBoxLanguage.SelectedItem is System.Windows.Controls.ComboBoxItem languageItem
+                && languageItem.Tag is string languageCode)
+                appSettings.Language = languageCode;
+            appSettings.CornerRadius = comboBoxCornerRadius.SelectedIndex;
+            appSettings.ScreenshotMode = (ScreenshotType)comboBoxScreenshot.SelectedIndex;
+            appSettings.ScreenshotSaveLocation = textBoxScreenshotPath.Text.Trim();
+            if (_mainViewModel.IsVoltageSourceSelectionSupported)
+                appSettings.ImpedanceTableSrc = (ImpedanceTableSource)comboBoxImpedanceSource.SelectedIndex;
+            appSettings.AutoUninstallDriver = (bool)checkBoxAutoUninstallDriver.IsChecked;
+            appSettings.AutoUninstallDriverNotificationLevel = comboBoxDriverNotification.SelectedIndex - 1;
+            if (_mainViewModel.IsVoltageSourceSelectionSupported)
+            {
+                appSettings.VsocSensorSource = GetSelectedVoltageSensorSource(comboBoxVsocSensorSource, appSettings.VsocSensorSource);
+                appSettings.VddioSensorSource = GetSelectedVoltageSensorSource(comboBoxVddioSensorSource, appSettings.VddioSensorSource);
+                appSettings.VmiscSensorSource = GetSelectedVoltageSensorSource(comboBoxVmiscSensorSource, appSettings.VmiscSensorSource);
+            }
+        }
+
+        private static VoltageSensorSource GetSelectedVoltageSensorSource(System.Windows.Controls.ComboBox comboBox, VoltageSensorSource fallback)
+        {
+            return (comboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is VoltageSensorSource source
+                ? source
+                : fallback;
+        }
+
+        private void CheckBoxAutoRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            numericUpDownRefreshInterval.IsEnabled = (bool)checkBoxAutoRefresh.IsChecked;
+            msText.IsEnabled = numericUpDownRefreshInterval.IsEnabled;
+        }
+
+        private void CheckBoxAutostart_Click(object sender, RoutedEventArgs e)
+        {
+            numericUpDownAutostartDelay.IsEnabled = (bool)checkBoxAutostart.IsChecked;
+        }
+
+        private void CheckBoxAdvancedMode_Click(object sender, RoutedEventArgs e)
+        {
+            checkBoxAutoRefresh.IsEnabled = (bool)checkBoxAdvancedMode.IsChecked;
+            numericUpDownRefreshInterval.IsEnabled =
+                (bool)checkBoxAutoRefresh.IsChecked && checkBoxAutoRefresh.IsEnabled;
+            msText.IsEnabled = numericUpDownRefreshInterval.IsEnabled;
+        }
+
+        private void ButtonSettingsApply_Click(object sender, RoutedEventArgs e)
+        {
+            SaveSettingsFromUi();
+            appSettings.Save();
+            _mainViewModel.RefreshSensors();
+
+            timerInstance.Interval = TimeSpan.FromMilliseconds(appSettings.AutoRefreshInterval);
+            _Theme = appSettings.AppTheme;
+
+            if (checkBoxAutoRefresh.IsEnabled)
+            {
+                if (appSettings.AutoRefresh && !timerInstance.IsEnabled)
+                    timerInstance.Start();
+                else if (!appSettings.AutoRefresh && timerInstance.IsEnabled)
+                    timerInstance.Stop();
+            }
+
+            var restartRequired = _AdvancedMode != appSettings.AdvancedMode ||
+                                   _ImpedanceTableSource != appSettings.ImpedanceTableSrc ||
+                                   _CornerRadius != appSettings.CornerRadius;
+
+            if (restartRequired)
+            {
+                buttonSettingsRestart.Visibility = Visibility.Visible;
+                appSettings.Save();
+                OptionsPopupText.Text = "Some settings will be applied on next launch.";
+            }
+
+            ShowSavedNotification();
+        }
+
+        private void ButtonSettingsReset_Click(object sender, RoutedEventArgs e)
+        {
+            var result = ZenTimings.Theming.MessageBox.Show(
+                Loc.Get("Loc_Msg_ConfirmResetBody"),
+                Loc.Get("Loc_Options_ConfirmReset"),
+                ZenTimings.Theming.MessageBoxButton.YesNo,
+                ZenTimings.Theming.MessageBoxImage.Warning);
+
+            if (result != ZenTimings.Theming.MessageBoxResult.Yes)
+                return;
+
+            LoadSettingsToUi(AppSettings.CreateDefaults());
+            ButtonSettingsApply_Click(sender, e);
+        }
+
+        private void ShowSavedNotification()
+        {
+            if (notificationTimer != null && notificationTimer.IsEnabled)
+                notificationTimer.Stop();
+
+            notificationTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(6000)
+            };
+
+            notificationTimer.Tick += (s, x) =>
+            {
+                notificationTimer.Stop();
+                OptionsPopup.IsOpen = false;
+            };
+
+            notificationTimer.Start();
+
+            OptionsPopup.Width = OptionWindowContent.ActualWidth;
+            OptionsPopup.IsOpen = true;
+        }
+
+        private void ButtonSettingsCancel_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void ButtonSettingsRestart_Click(object sender, RoutedEventArgs e)
+        {
+            var info = new ProcessStartInfo
+            {
+                Arguments = "/C choice /C Y /N /D Y /T 1 & START \"\" \"" + Assembly.GetEntryAssembly().Location + "\"",
+                WindowStyle = ProcessWindowStyle.Hidden,
+                CreateNoWindow = true,
+                FileName = "cmd.exe"
+            };
+            Process.Start(info);
+            Application.Current.Shutdown();
+        }
+
+        private void OptionsPopup_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            OptionsPopup.IsOpen = false;
+        }
+
+        private void OptionsWindow_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            // Restore theme on close if not saved
+            if (appSettings.AppTheme != _Theme)
+            {
+                appSettings.AppTheme = _Theme;
+                appSettings.ApplyTheme();
+            }
+        }
+
+        private System.Windows.Controls.ComboBoxItem FindThemeItem(Theme theme)
+        {
+            // Charcoal has no theme file and is rendered as Black (see AppSettings.GetThemeUri)
+            if (theme == Theme.Charcoal)
+                theme = Theme.Black;
+
+            var items = comboBoxTheme.Items.OfType<System.Windows.Controls.ComboBoxItem>().ToList();
+            return items.FirstOrDefault(item => TryGetTheme(item, out Theme itemTheme) && itemTheme == theme)
+                ?? items.FirstOrDefault(item => TryGetTheme(item, out Theme itemTheme) && itemTheme == Theme.DarkMintGradient);
+        }
+
+        private static bool TryGetTheme(System.Windows.Controls.ComboBoxItem item, out Theme theme)
+        {
+            theme = default(Theme);
+            return item?.Tag is string tag && Enum.TryParse(tag, false, out theme) && Enum.IsDefined(typeof(Theme), theme);
+        }
+
+        private void ComboBoxTheme_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (!TryGetTheme(comboBoxTheme.SelectedItem as System.Windows.Controls.ComboBoxItem, out Theme theme))
+                return;
+
+            appSettings.AppTheme = theme;
+            appSettings.ApplyTheme();
+        }
+
+        private void ButtonBrowseScreenshotPath_Click(object sender, RoutedEventArgs e)
+        {
+            var folderDialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "Select folder to save screenshots"
+            };
+
+            // Set initial path to current screenshot path if valid
+            string currentPath = textBoxScreenshotPath.Text.Trim();
+            if (!string.IsNullOrEmpty(currentPath) && System.IO.Directory.Exists(currentPath))
+            {
+                folderDialog.SelectedPath = currentPath;
+            }
+
+            if (folderDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                textBoxScreenshotPath.Text = folderDialog.SelectedPath;
+            }
+        }
+    }
+}

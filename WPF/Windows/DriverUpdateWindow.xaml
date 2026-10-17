@@ -1,0 +1,89 @@
+﻿<local:ThemedWindow
+    xmlns:local="clr-namespace:ZenTimings"
+    x:Class="ZenTimings.Windows.DriverUpdateWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:theming="clr-namespace:ZenTimings.Theming"                   
+    mc:Ignorable="d"
+    Title="{DynamicResource Loc_DriverUpdate_Title}"
+    Width="400"
+    SizeToContent="Height"                     
+    WindowStartupLocation="CenterOwner"
+    BorderThickness="1"
+    UseLayoutRounding="True"
+    Style="{DynamicResource WindowStyles}">
+    <StackPanel Margin="20">
+
+        <!-- Message -->
+        <TextBlock Text="{DynamicResource Loc_DriverUpdate_Intro}"
+               TextWrapping="Wrap"
+               Margin="0 0 0 15"/>
+
+        <TextBlock Text="{DynamicResource Loc_DriverUpdate_Detail}"
+           TextWrapping="Wrap"
+           Margin="0 0 0 15"/>
+
+        <!-- Versions Grid -->
+        <Grid Margin="0 0 0 15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="15"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="2"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Current -->
+            <TextBlock Text="{DynamicResource Loc_DriverUpdate_CurrentVersion}"
+                   Grid.Row="0"
+                   Grid.Column="0"
+                   VerticalAlignment="Center"
+                   FontWeight="SemiBold"/>
+
+            <TextBlock Text="{Binding currentVersion, Mode=OneTime}"
+                   Grid.Row="0"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"/>
+
+            <!-- New -->
+            <TextBlock Text="{DynamicResource Loc_DriverUpdate_AvailableVersion}"
+                   Grid.Row="2"
+                   Grid.Column="0"
+                   VerticalAlignment="Center"
+                   FontWeight="SemiBold"/>
+
+            <TextBlock Text="{Binding newVersion, Mode=OneTime}"
+                   Grid.Row="2"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Skip checkbox -->
+        <CheckBox x:Name="SkipDriverUpdateCheckBox"
+              Content="{DynamicResource Loc_DriverUpdate_DontRemind}"
+              Margin="0 20 0 20"/>
+
+        <!-- Buttons -->
+        <StackPanel Orientation="Horizontal"
+                HorizontalAlignment="Right">
+
+            <Button x:Name="DriverUpdate_Close"
+                Content="{DynamicResource Loc_Common_Later}"
+                IsCancel="True"
+                Width="80"
+                Margin="0 0 10 0"/>
+
+            <Button x:Name="DriverUpdate_Install"
+                Content="{DynamicResource Loc_DriverUpdate_UpdateNow}"
+                Width="100"
+                Style="{DynamicResource {x:Static theming:ThemeStyles.AccentButton}}" Click="DriverUpdate_Install_Click" />
+        </StackPanel>
+
+    </StackPanel>
+</local:ThemedWindow>

@@ -1,0 +1,157 @@
+﻿<local:ThemedWindow
+    xmlns:local="clr-namespace:ZenTimings"
+    x:Class="ZenTimings.Windows.AboutDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="{DynamicResource Loc_About_Title}"
+    Height="250"
+    Width="360"
+    ResizeMode="NoResize"
+    SizeToContent="Height"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    Icon="/ZenTimings;component/Resources/new-icon/16.png"
+    BorderThickness="1"
+    UseLayoutRounding="True"
+    Style="{DynamicResource WindowStyles}">
+
+    <StackPanel x:Name="AboutWindowContent">
+        <Popup
+            x:Name="aboutWindowPopup"
+            Panel.ZIndex="100"
+            PlacementTarget="{Binding ElementName=AboutWindowContent}"
+            VerticalAlignment="Center"
+            Placement="Relative"
+            HorizontalAlignment="Center"
+            VerticalOffset="0"
+            AllowsTransparency="True"
+            Opacity="0.8"
+            PopupAnimation="Fade"
+            ClipToBounds="True"
+            StaysOpen="False"
+            ScrollViewer.VerticalScrollBarVisibility="Disabled" MouseDown="AboutWindowPopup_MouseDown">
+            <TextBlock
+                Name="optionsPopupText"
+                Background="{DynamicResource SuccessBackground}"
+                Padding="10" Opacity="0.95">
+                ZenTimings is up to date.
+            </TextBlock>
+        </Popup>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition  Width="auto"/>
+                <ColumnDefinition />
+                <ColumnDefinition Width="auto" />
+            </Grid.ColumnDefinitions>
+
+            <Grid.RowDefinitions>
+                <RowDefinition />
+                <RowDefinition Height="auto" />
+            </Grid.RowDefinitions>
+
+            <TabControl
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Grid.Column="0"
+                Grid.ColumnSpan="3"
+                Padding="0"
+                Background="{DynamicResource PanelBackground}"
+                Grid.Row="0"
+                BorderThickness="0,1"
+                ClipToBounds="True"
+                SnapsToDevicePixels="True"
+                MinWidth="360"
+                MinHeight="160"
+                ScrollViewer.CanContentScroll="True"
+                BorderBrush="{DynamicResource SeparatorColor}"
+                Template="{DynamicResource TabControlControlTemplate}">
+                <TabItem
+                	Header="{DynamicResource Loc_Common_General}"
+                    Background="{DynamicResource PanelBackground}"
+                    BorderThickness="0,1,1,1"
+                    BorderBrush="{DynamicResource SeparatorColor}">
+                    <Grid Margin="6 12 12 12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto" />
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Column="0" Padding="10">
+                            <Image Source="/ZenTimings;component/Resources/new-icon/64.png" Width="48" Height="48" VerticalAlignment="Top" />
+                        </Border>
+
+                        <Border Grid.Column="1" Padding="10" Grid.ColumnSpan="2">
+                            <StackPanel>
+                                <Label x:Name="labelProductName" Content="ZenTimings" Padding="0 0 5 10" FontSize="15" />
+                                <TextBlock x:Name="labelVersion" Text="" Padding="0 2 5 2" />
+                                <TextBlock x:Name="labelCopyright" Text="" Padding="0 2 5 2" />
+                                <TextBlock x:Name="labelCompanyName" Text="" Padding="0 2 5 2" />
+                                <TextBlock x:Name="labelContributors"
+                                           Text="{DynamicResource Loc_About_Contributors}"
+                                           TextWrapping="Wrap"
+                                           Padding="0 2 5 2"
+                                           Margin="0 10 0 0"/>
+                                <TextBlock Padding="0 2 5 2" Margin="0 20 0 0">
+                                    <Hyperlink NavigateUri="https://zentimings.com"
+                                               RequestNavigate="Hyperlink_RequestNavigate">
+                                        <Run Text="https://zentimings.com" />
+                                    </Hyperlink>
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" Padding="0 10 0 0" FontSize="11" Foreground="{DynamicResource DisabledColor}">
+                                    ASUS, G.Skill, MSI, Colorful, OriginCode, Biwin logos and other trademarks are the property of their respective owners.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </TabItem>
+                 <TabItem Header="{DynamicResource Loc_About_Modules}" Background="{DynamicResource PanelBackground}" BorderThickness="1"
+                          Margin="-1,0,0,0" BorderBrush="{DynamicResource SeparatorColor}">
+                    <DataGrid
+                    	x:Name="Modules"
+                    	AutoGenerateColumns="True"
+                    	Margin="10"
+                    	HeadersVisibility="None"
+                        ColumnWidth="Auto"
+                        GridLinesVisibility="None"
+                        CanUserDeleteRows="False"
+                        CanUserResizeRows="False"
+                        CanUserReorderColumns="False"
+                        CanUserResizeColumns="False"
+                        CanUserSortColumns="False"
+                        Focusable="False" />
+                </TabItem>
+            </TabControl>
+
+            <Button
+                x:Name="CheckUpdateBtn"
+                Grid.Column="1"
+                Grid.Row="1"
+                Content="{DynamicResource Loc_About_CheckUpdate}"
+                IsCancel="False"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Right"
+                Width="Auto"
+                Margin="10 10 0 10"
+                Click="CheckUpdateBtn_Click" />
+
+            <Button
+                Grid.Column="2"
+                Grid.Row="1"
+                Content="{DynamicResource Loc_Common_OK}"
+                IsCancel="True"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Right"
+                Width="60"
+                Margin="10" Click="Button_Click" />
+
+        </Grid>
+    </StackPanel>
+</local:ThemedWindow>

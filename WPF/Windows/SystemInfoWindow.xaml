@@ -1,0 +1,159 @@
+<local:ThemedWindow
+    xmlns:local="clr-namespace:ZenTimings"
+    xmlns:theming="clr-namespace:ZenTimings.Theming"
+    x:Class="ZenTimings.Windows.SystemInfoWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="clr-namespace:ZenTimings.Controls"
+    mc:Ignorable="d"
+    Title="{DynamicResource Loc_SysInfo_Title}"
+    SnapIdentifier="SystemInfoWindow"
+    Height="450"
+    Width="800"
+    WindowStartupLocation="CenterOwner"
+    BorderThickness="1"
+    UseLayoutRounding="True"
+    Style="{DynamicResource WindowStyles}"
+    Activated="Window_Activated"
+    Icon="/ZenTimings;component/Resources/new-icon/16.png"
+    Closing="Window_Closing">
+
+    <Window.Resources>
+        <!-- Section header with a button that copies the grid the section names in its Tag -->
+        <DataTemplate x:Key="CopyHeaderTemplate">
+            <DockPanel>
+                <TextBlock Text="{Binding}" Style="{StaticResource SectionHeaderTextStyle}" />
+                <Button Style="{DynamicResource IconButtonStyle}"
+                        Margin="4,0,0,0"
+                        ToolTip="{DynamicResource Loc_Common_CopyToClipboard}"
+                        Click="CopySection_Click"
+                        DockPanel.Dock="Right"
+                        HorizontalAlignment="Right">
+                    <controls:AppIcon Kind="IconCopy" IconWidth="11" IconHeight="11" Fill="{DynamicResource TextColor}" />
+                </Button>
+            </DockPanel>
+        </DataTemplate>
+
+        <Style x:Key="TimingRowStyle" TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource SectionRowStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMismatch}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource TimingMismatchBackgroundBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="TimingNameTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource SectionNameTextStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMismatch}" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource TimingMismatchBrush}" />
+                    <Setter Property="FontWeight" Value="Bold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="TimingValueTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource SectionValueTextStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMismatch}" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource TimingMismatchBrush}" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <ScrollViewer Padding="0" Margin="0" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel CanVerticallyScroll="False">
+            <GroupBox
+                Header="{DynamicResource Loc_SysInfo_Tab}"
+                Style="{StaticResource CollapsibleSectionStyle}" HeaderTemplate="{StaticResource CopyHeaderTemplate}"
+                Tag="{x:Reference TestGrid}">
+                <DataGrid
+                    Name="TestGrid"
+                    Style="{StaticResource SectionDataGridStyle}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Width="150" Binding="{Binding Name}" ElementStyle="{StaticResource SectionNameTextStyle}" />
+                        <DataGridTextColumn Width="auto" Binding="{Binding Value, UpdateSourceTrigger=PropertyChanged}" ElementStyle="{StaticResource SectionValueTextStyle}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </GroupBox>
+
+            <GroupBox
+                Header="{DynamicResource Loc_SysInfo_MemoryTimings}"
+                Style="{StaticResource CollapsibleSectionStyle}" HeaderTemplate="{StaticResource CopyHeaderTemplate}"
+                Tag="{x:Reference MemCfgGrid}">
+                <DataGrid
+                    Name="MemCfgGrid"
+                    Style="{StaticResource SectionDataGridStyle}"
+                    HeadersVisibility="Column"
+                    RowStyle="{StaticResource TimingRowStyle}">
+                    <!--DataGrid.Columns>
+                        <DataGridTextColumn Width="150" Binding="{Binding Name}" ElementStyle="{StaticResource SectionNameTextStyle}" />
+                        <DataGridTextColumn Width="auto" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}" />
+                    </DataGrid.Columns-->
+                </DataGrid>
+            </GroupBox>
+
+            <GroupBox
+                Header="{DynamicResource Loc_SysInfo_AodTable}"
+                Style="{StaticResource CollapsibleSectionStyle}" HeaderTemplate="{StaticResource CopyHeaderTemplate}"
+                Tag="{x:Reference MemControllerGrid}">
+                <DataGrid
+                    Name="MemControllerGrid"
+                    Style="{StaticResource SectionDataGridStyle}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Width="150" Binding="{Binding Name}" ElementStyle="{StaticResource SectionNameTextStyle}" />
+                        <DataGridTextColumn Width="auto" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </GroupBox>
+
+            <GroupBox
+                Header="{DynamicResource Loc_SysInfo_ApobTable}"
+                Style="{StaticResource CollapsibleSectionStyle}" HeaderTemplate="{StaticResource CopyHeaderTemplate}"
+                Tag="{x:Reference ApobTableGrid}">
+                <DataGrid
+                    Name="ApobTableGrid"
+                    Style="{StaticResource SectionDataGridStyle}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Width="150" Binding="{Binding Name}" ElementStyle="{StaticResource SectionNameTextStyle}" />
+                        <DataGridTextColumn Width="auto" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </GroupBox>
+
+            <Border>
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding asusSensors.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding asusSensors}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <GroupBox
+                    Header="{DynamicResource Loc_SysInfo_AsusWmi}"
+                    Style="{StaticResource CollapsibleSectionStyle}" HeaderTemplate="{StaticResource CopyHeaderTemplate}"
+                    Tag="{x:Reference AsusWmiGrid}">
+
+                    <DataGrid
+                        Name="AsusWmiGrid"
+                        Style="{StaticResource SectionDataGridStyle}"
+                        ItemsSource="{Binding asusSensors}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Width="150" Binding="{Binding Name}" ElementStyle="{StaticResource SectionNameTextStyle}" />
+                            <DataGridTextColumn Width="auto" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </GroupBox>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</local:ThemedWindow>

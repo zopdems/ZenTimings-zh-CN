@@ -1,0 +1,199 @@
+<local:ThemedWindow
+    xmlns:local="clr-namespace:ZenTimings"
+    x:Class="ZenTimings.Windows.SpdInfoWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:theming="clr-namespace:ZenTimings.Theming"
+    xmlns:controls="clr-namespace:ZenTimings.Controls"
+    mc:Ignorable="d"
+    Title="{DynamicResource Loc_Spd_Title}"
+    Height="700"
+    Width="480"
+    MinWidth="420"
+    MinHeight="320"
+    WindowStartupLocation="CenterOwner"
+    BorderThickness="1"
+    SizeToContent="WidthAndHeight"
+    UseLayoutRounding="True"
+    Style="{DynamicResource WindowStyles}">
+
+    <Window.Resources>
+        <Style x:Key="LabelStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static theming:ThemeBrushes.ForegroundBrush}}"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="2,0"/>
+        </Style>
+
+        <!-- Label / value rows of a section -->
+        <Style x:Key="SpdRowsGridStyle" TargetType="{x:Type DataGrid}" BasedOn="{StaticResource SectionDataGridStyle}">
+            <Setter Property="Margin" Value="0,2,0,4"/>
+        </Style>
+
+        <Style x:Key="SpdLabelTextStyle" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource SectionNameTextStyle}">
+            <Setter Property="Opacity" Value="0.75"/>
+        </Style>
+
+        <DataTemplate x:Key="SpdSectionHeaderTemplate">
+            <TextBlock Text="{Binding}" Style="{StaticResource SectionHeaderTextStyle}"/>
+        </DataTemplate>
+
+        <Style x:Key="SpdSection" TargetType="{x:Type GroupBox}" BasedOn="{StaticResource CollapsibleSectionStyle}">
+            <Setter Property="Margin" Value="0,0,0,8"/>
+            <Setter Property="HeaderTemplate" Value="{StaticResource SpdSectionHeaderTemplate}"/>
+        </Style>
+
+        <!-- Profile header: name on the left, speed and primary timings on the right -->
+        <DataTemplate x:Key="ProfileHeaderTemplate">
+            <DockPanel LastChildFill="True">
+                <TextBlock DockPanel.Dock="Right"
+                           Margin="12,0,2,0"
+                           Text="{Binding Summary}"
+                           Style="{StaticResource SectionHeaderTextStyle}"
+                           Foreground="{DynamicResource AccentTextColor}"/>
+                <TextBlock Text="{Binding Title}"
+                           TextTrimming="CharacterEllipsis"
+                           Style="{StaticResource SectionHeaderTextStyle}"/>
+            </DockPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ProfileTemplate">
+            <GroupBox Header="{Binding}"
+                      HeaderTemplate="{StaticResource ProfileHeaderTemplate}"
+                      Style="{StaticResource SpdSection}">
+                <StackPanel>
+                    <DataGrid ItemsSource="{Binding Details}"
+                              Style="{StaticResource SpdRowsGridStyle}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Width="120" Binding="{Binding Label}" ElementStyle="{StaticResource SpdLabelTextStyle}"/>
+                            <DataGridTextColumn Width="*" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <DataGrid ItemsSource="{Binding Timings}"
+                              Style="{StaticResource SpdRowsGridStyle}"
+                              HeadersVisibility="Column">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="{DynamicResource Loc_Spd_Timing}" Width="*" Binding="{Binding Name}" ElementStyle="{StaticResource SectionNameTextStyle}"/>
+                            <DataGridTextColumn Header="{DynamicResource Loc_Spd_Cycles}" Width="80" Binding="{Binding Cycles}" ElementStyle="{StaticResource SectionValueTextStyle}"/>
+                            <DataGridTextColumn Header="{DynamicResource Loc_Spd_Value}" Width="110" Binding="{Binding Value}" ElementStyle="{StaticResource SpdLabelTextStyle}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </GroupBox>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Padding="10" Style="{DynamicResource PanelStyles}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="240"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0"
+                           Text="{DynamicResource Loc_Spd_DimmSlot}"
+                           Style="{StaticResource LabelStyle}"
+                           Margin="0,0,8,0"/>
+                <ComboBox x:Name="ComboSlots"
+                          Grid.Column="1"
+                          DisplayMemberPath="Display"
+                          SelectedValuePath="Index"
+                          SelectionChanged="ComboSlots_SelectionChanged"/>
+
+                <Button x:Name="ButtonDumpSpd"
+                        Grid.Column="3"
+                        Content="{DynamicResource Loc_Spd_Dump}"
+                        Padding="10,4"
+                        Click="ButtonDumpSpd_Click"/>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Style="{DynamicResource Separator}"/>
+
+        <!-- Tabs -->
+        <Grid Grid.Row="2" Margin="10">
+            <TabControl x:Name="ProfilesTabControl"
+                        BorderThickness="0">
+
+                <TabItem x:Name="ModuleTab" Header="{DynamicResource Loc_Spd_Module}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="0,6,0,0">
+                        <StackPanel>
+                            <GroupBox Header="{DynamicResource Loc_Spd_Module}" Style="{StaticResource SpdSection}">
+                                <DataGrid x:Name="ModuleGrid" Style="{StaticResource SpdRowsGridStyle}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Width="120" Binding="{Binding Label}" ElementStyle="{StaticResource SpdLabelTextStyle}"/>
+                                        <DataGridTextColumn Width="*" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+
+                            <GroupBox x:Name="ComponentsSection" Header="{DynamicResource Loc_Spd_Components}" Style="{StaticResource SpdSection}">
+                                <DataGrid x:Name="ComponentsGrid" Style="{StaticResource SpdRowsGridStyle}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Width="120" Binding="{Binding Label}" ElementStyle="{StaticResource SpdLabelTextStyle}"/>
+                                        <DataGridTextColumn Width="*" Binding="{Binding Value}" ElementStyle="{StaticResource SectionValueTextStyle}"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem x:Name="ProfilesTab" Header="{DynamicResource Loc_Spd_Profiles}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="0,6,0,0">
+                        <StackPanel>
+                            <ItemsControl x:Name="ProfilesList"
+                                          Focusable="False"
+                                          ItemTemplate="{StaticResource ProfileTemplate}"/>
+                            <TextBlock x:Name="NoProfilesText"
+                                       Text="{DynamicResource Loc_Spd_NoProfiles}"
+                                       Style="{StaticResource LabelStyle}"
+                                       Margin="4"
+                                       Visibility="Collapsed"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+
+            <Button Panel.ZIndex="1"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="0,4,0,0"
+                    Style="{DynamicResource IconButtonStyle}"
+                    ToolTip="{DynamicResource Loc_Spd_CopyTab}"
+                    Click="CopyTab_Click">
+                <controls:AppIcon Kind="IconCopy" IconWidth="11" IconHeight="11" Fill="{DynamicResource TextColor}" />
+            </Button>
+        </Grid>
+
+        <Border Grid.Row="3" Style="{DynamicResource Separator}"/>
+
+        <!-- Status bar -->
+        <Border Grid.Row="4" Style="{DynamicResource BottomPanelStyles}">
+            <TextBlock x:Name="StatusText"
+                       Text="{DynamicResource Loc_Common_Ready}"
+                       Style="{StaticResource LabelStyle}"
+                       Opacity="0.75"
+                       VerticalAlignment="Center"/>
+        </Border>
+    </Grid>
+</local:ThemedWindow>

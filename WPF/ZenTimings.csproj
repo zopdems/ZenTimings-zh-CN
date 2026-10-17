@@ -1,0 +1,624 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{69D27E70-6B45-4E0F-B0A4-A53C3625B732}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>ZenTimings</RootNamespace>
+    <AssemblyName>ZenTimings</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <WarningLevel>4</WarningLevel>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;BETA</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>
+    </DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>Resources\ZenTimings2022.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup>
+    <VersionMajor>142</VersionMajor>
+    <VersionMinor>0</VersionMinor>
+    <VersionBase>$(VersionMajor)</VersionBase>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <PropertyGroup>
+    <PawnIOVersion>2.2.0</PawnIOVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="System" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Compile Include="..\Common\AsusSensorInfo.cs">
+      <Link>Common\AsusSensorInfo.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\AsusWMI.cs">
+      <Link>Common\AsusWMI.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\BiosACPIFunction.cs">
+      <Link>Common\BiosACPIFunction.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\BiosMemController.cs">
+      <Link>Common\BiosMemController.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\CpuSingleton.cs">
+      <Link>Common\CpuSingleton.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\Screenshot.cs">
+      <Link>Common\Screenshot.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\UpdaterArgs.cs">
+      <Link>Common\UpdaterArgs.cs</Link>
+    </Compile>
+    <Compile Include="..\Common\UpdaterPersistenceProvider.cs">
+      <Link>Common\UpdaterPersistenceProvider.cs</Link>
+    </Compile>
+    <Compile Include="Converters\CountToVisibilityConverter.cs" />
+    <Compile Include="Export\CoreOptionsScope.cs" />
+    <Compile Include="Export\SnapshotHtmlWriter.cs" />
+    <Compile Include="Helpers\AgesaHelper.cs" />
+    <Compile Include="Controls\LegacyDDR5APUTimingsPanel.xaml.cs">
+      <DependentUpon>LegacyDDR5APUTimingsPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\LPDDR5TimingsPanel.xaml.cs">
+      <DependentUpon>LPDDR5TimingsPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\LegacyDDR5TimingsPanel.xaml.cs">
+      <DependentUpon>LegacyDDR5TimingsPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\DDR5TimingsPanel19h.xaml.cs">
+      <DependentUpon>DDR5TimingsPanel19h.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Helpers\DriverCleaner.cs" />
+    <Compile Include="Helpers\DriverHelper.cs" />
+    <Compile Include="Encryption\UpdaterEncryption.cs" />
+    <Compile Include="Common\ObservableObject.cs" />
+    <Compile Include="Helpers\DriverCleanerNotification.cs" />
+    <Compile Include="Helpers\StartupHelper.cs" />
+    <Compile Include="Helpers\SecureDirectoryHelper.cs" />
+    <Compile Include="Helpers\CrashLog.cs" />
+    <Compile Include="Utils\VendorUtils.cs" />
+    <Compile Include="Utils\VisualCapture.cs" />
+    <Compile Include="Utils\ClipboardUtils.cs" />
+    <Compile Include="Export\LiveSnapshot.cs" />
+    <Compile Include="Export\SnapshotBuilder.cs" />
+    <Compile Include="Export\SnapshotObject.cs" />
+    <Compile Include="Export\SnapshotOptions.cs" />
+    <Compile Include="Export\SnapshotWriter.cs" />
+    <Compile Include="Settings\AppSettings.cs" />
+    <Compile Include="Settings\SensorSettings.cs" />
+    <Compile Include="Settings\ExportSettings.cs" />
+    <Compile Include="Controls\DDR4TimingsPanel.xaml.cs">
+      <DependentUpon>DDR4TimingsPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\DDR5APUTimingsPanel.xaml.cs">
+      <DependentUpon>DDR5APUTimingsPanel.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\DDR5TimingsPanel1Ah.xaml.cs">
+      <DependentUpon>DDR5TimingsPanel1Ah.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\TimingRow.xaml.cs">
+      <DependentUpon>TimingRow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Converters\DDR4ToVisConverter.cs" />
+    <Compile Include="Converters\FloatToBoolConverter.cs" />
+    <Compile Include="Converters\FloatToNAConverter.cs" />
+    <Compile Include="Converters\FloatToVoltageConverter.cs" />
+    <Compile Include="Converters\DDR5ToVisConverter.cs" />
+    <Compile Include="Converters\PhoenixToVisConverter.cs" />
+    <Compile Include="Plugin\IPlugin.cs" />
+    <Compile Include="Plugin\OHWMPlugin.cs" />
+    <Compile Include="Plugin\SVI2Plugin.cs" />
+    <Compile Include="Updater.cs" />
+    <Compile Include="ViewModels\ApobDataView.cs" />
+    <Compile Include="ViewModels\ModuleViewModel.cs" />
+    <Compile Include="ViewModels\SensorGroupViewModel.cs" />
+    <Compile Include="ViewModels\TelemetryItemViewModel.cs" />
+    <Compile Include="ViewModels\MainViewModel.cs" />
+    <Compile Include="Windows\DriverUpdateWindow.xaml.cs">
+      <DependentUpon>DriverUpdateWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\ApobInfoWindow.xaml.cs">
+      <DependentUpon>ApobInfoWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\SpdPresenter.cs" />
+    <Compile Include="Windows\SpdInfoWindow.xaml.cs">
+      <DependentUpon>SpdInfoWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\SensorsWindow.xaml.cs">
+      <DependentUpon>SensorsWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\AllDimmsCapture.cs" />
+    <Compile Include="Windows\AllDimmsWindow.xaml.cs">
+      <DependentUpon>AllDimmsWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\AppIcon.xaml.cs">
+      <DependentUpon>AppIcon.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\ChangelogItem.xaml.cs">
+      <DependentUpon>ChangelogItem.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\SensorSettingsWindow.xaml.cs">
+      <DependentUpon>SensorSettingsWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\ExportDialog.xaml.cs">
+      <DependentUpon>ExportDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\ThemedWindow.cs" />
+    <Compile Include="Theming\ChromeWindow.cs" />
+    <Compile Include="Theming\MessageBox.cs" />
+    <Compile Include="Theming\MessageBoxWindow.cs" />
+    <Compile Include="Theming\ThemeAssist.cs" />
+    <Compile Include="Theming\ThemeKeys.cs" />
+    <Compile Include="Theming\ThemeManager.cs" />
+    <Compile Include="Utils\WindowUtils.cs" />
+    <Compile Include="Utils\XmlUtils.cs" />
+    <Compile Include="Windows\AboutDialog.xaml.cs">
+      <DependentUpon>AboutDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\Changelog.xaml.cs">
+      <DependentUpon>Changelog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\DebugDialog.xaml.cs">
+      <DependentUpon>DebugDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\SaveScreenshotWindow.xaml.cs">
+      <DependentUpon>SaveScreenshotWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\SplashWindow.xaml.cs">
+      <DependentUpon>SplashWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\UpdateAvailableDialog.xaml.cs">
+      <DependentUpon>UpdateAvailableDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\UpdateProgressWindow.xaml.cs">
+      <DependentUpon>UpdateProgressWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Windows\SystemInfoWindow.xaml.cs">
+      <DependentUpon>SystemInfoWindow.xaml</DependentUpon>
+    </Compile>
+    <Page Include="Controls\DDR4TimingsPanel.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\LegacyDDR5APUTimingsPanel.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\LPDDR5TimingsPanel.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\LegacyDDR5TimingsPanel.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\DDR5APUTimingsPanel.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\DDR5TimingsPanel19h.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\DDR5TimingsPanel1Ah.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Controls\TimingRow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="MainWindow.xaml.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Page Include="Windows\AdvancedTimingsWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="Windows\AdvancedTimingsWindow.xaml.cs">
+      <DependentUpon>AdvancedTimingsWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Page Include="Windows\OptionsDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="Windows\OptionsDialog.xaml.cs">
+      <DependentUpon>OptionsDialog.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Page Include="Windows\ApobInfoWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\SpdInfoWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\SensorsWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\AllDimmsWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\SensorSettingsWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\ExportDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Resource Include="Themes\Dark.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Resource>
+    <Resource Include="Themes\Light.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Resource>
+    <Resource Include="Themes\DarkMint.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\camera.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\asus\ayw\ayw-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\asus\rog\rog-logo-alt.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\asus\rog\rog-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\biwin\biwin-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\biwin\origincode-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\asus\proart\proart-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\asus\proart\proart-logo-alt.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\biwin\biwin-logo-alt.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\gskill\gskill-logo-alt.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\gskill\gskill-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Themes\BurntOrange.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Themes\DarkMintGradient.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Resource>
+    <Resource Include="Themes\AsusRog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Themes\RetroWave.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Themes\Dracula.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\msi\meg.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\colorful\igame-logo-alt.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\colorful\igame-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\msi\mpg.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\msi\mag.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\msi\msi.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\msi\pro.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\msi\msi-dragon.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Resources\vendor\asus\tuf\tuf-logo.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Page Include="Themes\Black.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Resource Include="Themes\SharedAssets.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Resource>
+    <Resource Include="Themes\ThemeCommon.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Resource>
+    <Page Include="Windows\AboutDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\Changelog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\DebugDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\DriverUpdateWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\SaveScreenshotWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\SplashWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\UpdateAvailableDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\UpdateProgressWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Windows\SystemInfoWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Resource Include="Themes\Base.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Resource Include="Themes\AppIcons.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <Page Include="Themes\Generic.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Theming\Controls.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Theming\ColorSchemes\Dark.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Theming\ColorSchemes\Light.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Theming\ColorSchemes\Shared.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\ChangelogItem.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Controls\AppIcon.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Localization\LocalizationManager.cs" />
+    <Compile Include="Localization\LocExtension.cs" />
+    <Resource Include="Localization\Strings.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+    <!-- 文件名刻意不带 .zh-CN / .zhCN 这类区域性后缀：MSBuild 的 AssignCulture
+         会把它当成区域性资源，导致该资源无法通过 pack URI 按名定位（界面切不了中文）。 -->
+    <Resource Include="Localization\StringsChinese.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Resource>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\AssemblyInfo.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Properties\Resources.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+    <EmbeddedResource Include="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+    <None Include="app.config" />
+    <None Include="app.manifest" />
+    <Compile Include="Controls\NumericTextBox.cs" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\new-icon\64.png" />
+    <Resource Include="Resources\new-icon\16.png" />
+    <Resource Include="Resources\ZenTimings2022.ico" />
+    <Resource Include="Resources\splash.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\PawnIO\PawnIO_setup.exe" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ZenStates-Core\ZenStates-Core.csproj">
+      <Project>{9aeaee9d-ef93-bd21-ffdd-e8f487c89803}</Project>
+      <Name>ZenStates-Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="ComputeVersionFromGit" BeforeTargets="PrepareForBuild">
+    <Exec Command="git -c safe.directory=* -C &quot;$(MSBuildThisFileDirectory)..&quot; rev-list --count HEAD" ConsoleToMsBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitRevCountOutput" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitRevCountExitCode" />
+    </Exec>
+    <Exec Command="git -c safe.directory=* -C &quot;$(MSBuildThisFileDirectory)..&quot; rev-parse --short HEAD" ConsoleToMsBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitShortShaOutput" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitShortShaExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <_GitRevCountOutput>$(_GitRevCountOutput.Trim())</_GitRevCountOutput>
+      <_GitShortShaOutput>$(_GitShortShaOutput.Trim())</_GitShortShaOutput>
+      <BuildNumber>0</BuildNumber>
+      <BuildNumber Condition="'$(_GitRevCountExitCode)' == '0' And $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitRevCountOutput)', '^[0-9]+$'))">$(_GitRevCountOutput)</BuildNumber>
+      <GitShortSha>unknown</GitShortSha>
+      <GitShortSha Condition="'$(_GitShortShaExitCode)' == '0' And $([System.Text.RegularExpressions.Regex]::IsMatch('$(_GitShortShaOutput)', '^[0-9a-fA-F]+$'))">$(_GitShortShaOutput)</GitShortSha>
+      <BuildNumberFile>$(IntermediateOutputPath)BuildNumber.g.cs</BuildNumberFile>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <WriteLinesToFile File="$(BuildNumberFile)" Overwrite="true" WriteOnlyWhenDifferent="true" Lines="// This code was generated by a tool. Any changes made manually will be lost;// the next time this code is regenerated.;using System.Reflection%3B;[assembly: AssemblyVersion(&quot;$(VersionBase).$(BuildNumber)&quot;)];[assembly: AssemblyFileVersion(&quot;$(VersionBase).$(BuildNumber)&quot;)];[assembly: AssemblyInformationalVersion(&quot;$(VersionBase).$(BuildNumber)+$(GitShortSha)&quot;)]" />
+    <ItemGroup>
+      <Compile Include="$(BuildNumberFile)" />
+      <FileWrites Include="$(BuildNumberFile)" />
+    </ItemGroup>
+  </Target>
+  <!-- 读取 APOB / AOD / AGESA 需要 inpoutx64.dll，它必须和 ZenTimings.exe 在同一目录。
+       上游 ZenStates-Core 的 PostBuild 只复制到它自己的输出目录（..\ZenStates-Core\bin\...），
+       主程序目录拿不到，所以这里再复制一次。文件缺失时静默跳过。 -->
+  <Target Name="CopyIoDriverLibraries" AfterTargets="Build">
+    <PropertyGroup>
+      <IoExtDir>$(MSBuildThisFileDirectory)..\ZenStates-Core\External</IoExtDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <IoDriverLibrary Include="$(IoExtDir)\InpOut\x64\inpoutx64.dll"
+                       Condition="Exists('$(IoExtDir)\InpOut\x64\inpoutx64.dll')" />
+      <IoDriverLibrary Include="$(IoExtDir)\WinIo\WinIo32.dll"
+                       Condition="Exists('$(IoExtDir)\WinIo\WinIo32.dll')" />
+      <IoDriverLibrary Include="$(IoExtDir)\WinIo\WinIo32.sys"
+                       Condition="Exists('$(IoExtDir)\WinIo\WinIo32.sys')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(IoDriverLibrary)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <!-- 两份许可证原名都是 LICENSE.txt，复制时分别重命名，避免互相覆盖 -->
+    <Copy SourceFiles="$(IoExtDir)\InpOut\license.txt" DestinationFiles="$(OutputPath)InpOut.LICENSE.txt"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(IoExtDir)\InpOut\license.txt')" />
+    <Copy SourceFiles="$(IoExtDir)\WinIo\LICENSE.txt" DestinationFiles="$(OutputPath)WinIo32.LICENSE.txt"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(IoExtDir)\WinIo\LICENSE.txt')" />
+  </Target>
+  <Target Name="DownloadPawnIOSetup" BeforeTargets="PrepareForBuild" Condition="!Exists('Resources\PawnIO\PawnIO_setup.exe')">
+    <MakeDir Directories="Resources\PawnIO" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/namazso/PawnIO.Setup/releases/download/$(PawnIOVersion)/PawnIO_setup.exe' -OutFile 'Resources\PawnIO\PawnIO_setup.exe'&quot;" />
+  </Target>
+  <Target Name="GeneratePawnIOVersionInfo" BeforeTargets="CoreCompile" DependsOnTargets="PrepareForBuild">
+    <PropertyGroup>
+      <PawnIOVersionInfoFile>$(IntermediateOutputPath)PawnIOVersionInfo.g.cs</PawnIOVersionInfoFile>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(PawnIOVersionInfoFile)" Overwrite="true" Lines="namespace ZenTimings { internal static class PawnIOBuildInfo { public const string Version = &quot;$(PawnIOVersion)&quot;%3B } }" />
+    <ItemGroup>
+      <Compile Include="$(PawnIOVersionInfoFile)" />
+    </ItemGroup>
+  </Target>
+</Project>

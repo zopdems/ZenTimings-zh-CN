@@ -1,0 +1,41 @@
+﻿<Window x:Class="ZenTimings.Windows.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="{DynamicResource Loc_Splash_Title}"
+        Height="119"
+        Width="253"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Focusable="False"
+        WindowStyle="None"
+        Margin="0"
+        MaxWidth="253"
+        MaxHeight="119"
+        BorderThickness="0"
+        ScrollViewer.VerticalScrollBarVisibility="Disabled"
+        VerticalContentAlignment="Center"
+        ScrollViewer.CanContentScroll="True"
+        SnapsToDevicePixels="True"
+        Padding="0"
+        UseLayoutRounding="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+    <Grid>
+        <Border CornerRadius="5,5,5,5" Margin="12">
+            <Border.Background>
+                <ImageBrush Stretch="UniformToFill" ImageSource="/ZenTimings;component/Resources/splash.png"/>
+            </Border.Background>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="12" Opacity=".4" ShadowDepth="2" />
+            </Border.Effect>
+        </Border>
+        <Label Name="status" Height="24" FontSize="11" Content="{DynamicResource Loc_Splash_Initializing}" FontWeight="Normal"
+                       Foreground="#cdcdcd" Margin="24,78,10,0" VerticalContentAlignment="Center" Panel.ZIndex="1" Width="206"
+                       HorizontalAlignment="Left" VerticalAlignment="Top" />
+    </Grid>
+</Window>

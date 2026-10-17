@@ -1,0 +1,332 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Windows;
+using ZenTimings.Helpers;
+using ZenTimings.Utils;
+using static ZenTimings.Helpers.DriverCleaner;
+using ZenTimings.Localization;
+
+namespace ZenTimings.Settings
+{
+    [Serializable]
+    public sealed class AppSettings : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler PropertyChanged;
+        public const int VersionMajor = 1;
+        public const int VersionMinor = 17;
+
+        private static readonly string Filename = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.xml");
+        public const string AGESA_UNKNOWN = "Unknown";
+
+        private static AppSettings _instance = null;
+
+        private AppSettings() { }
+
+        public static AppSettings CreateDefaults() => new AppSettings();
+
+        public static AppSettings Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = new AppSettings().Load();
+                }
+
+                return _instance;
+            }
+        }
+
+        public enum Theme : int
+        {
+            Light,
+            Dark,
+            DarkMint,
+            DarkMintGradient,
+            AsusRog,
+            Dracula,
+            RetroWave,
+            BurntOrange,
+            Charcoal,
+            Black,
+        }
+
+        public enum ScreenshotType : int
+        {
+            Window,
+            Desktop,
+        }
+
+        public enum ImpedanceTableSource : int
+        {
+            AOD,
+            APOB
+        }
+
+        /// <summary>Which update feed the updater checks.</summary>
+        public enum ReleaseChannel : int
+        {
+            /// <summary>Stable releases only.</summary>
+            Stable,
+            /// <summary>Beta releases only.</summary>
+            Beta,
+            /// <summary>Both feeds; the newer version wins.</summary>
+            Any,
+        }
+
+        public enum VoltageSensorSource : int
+        {
+            Auto = -1,
+            SuperIo,
+            Svi3,
+            Aod
+        }
+
+        public AppSettings Create(bool save = true)
+        {
+            if (save) Save();
+
+            return this;
+        }
+
+        public AppSettings Reset() => Create();
+
+        public AppSettings Load()
+        {
+            try
+            {
+                if (File.Exists(Filename))
+                {
+                    return XmlUtils.DeserializeFromXmlFile<AppSettings>(Filename);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+                MessageBox.Show(
+                    Loc.Get("Loc_Msg_InvalidSettings"),
+                    Loc.Get("Loc_Error_Title"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+
+            return Create();
+        }
+
+        public void Save()
+        {
+            try
+            {
+                if (!DriverHelper.IsPawnIoInstalled)
+                    return;
+
+                Version = new Version(VersionMajor, VersionMinor).ToString();
+
+                string xmlContent = XmlUtils.SerializeToXml<AppSettings>(this);
+                File.WriteAllText(Filename, xmlContent);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+                ZenTimings.Theming.MessageBox.Show(
+                    Loc.Get("Loc_Msg_SettingsSaveFailed"),
+                    Loc.Get("Loc_Error_Title"),
+                    ZenTimings.Theming.MessageBoxButton.OK,
+                    ZenTimings.Theming.MessageBoxImage.Error);
+            }
+        }
+
+        private static Uri ThemeUri(string name) =>
+            new Uri("pack://application:,,,/ZenTimings;component/Themes/" + name + ".xaml", UriKind.Absolute);
+
+        // Maps each theme by enum value (not by index) to its resource dictionary.
+        private static Uri GetThemeUri(Theme theme)
+        {
+            switch (theme)
+            {
+                case Theme.Light: return ThemeUri("Light");
+                case Theme.Dark: return ThemeUri("Dark");
+                case Theme.DarkMint: return ThemeUri("DarkMint");
+                case Theme.DarkMintGradient: return ThemeUri("DarkMintGradient");
+                case Theme.AsusRog: return ThemeUri("AsusRog");
+                case Theme.Dracula: return ThemeUri("Dracula");
+                case Theme.RetroWave: return ThemeUri("RetroWave");
+                case Theme.BurntOrange: return ThemeUri("BurntOrange");
+                // Charcoal.xaml is not part of the build. Previous builds mapped the
+                // stored "Charcoal" value (selected via the "Black" combo item) to Black.xaml.
+                case Theme.Charcoal: return ThemeUri("Black");
+                case Theme.Black: return ThemeUri("Black");
+                default: return ThemeUri("DarkMintGradient");
+            }
+        }
+
+        public void ApplyTheme()
+        {
+            try
+            {
+                ZenTimings.Theming.ThemeManager.SetTheme(GetThemeUri(AppTheme));
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex.Message);
+
+                try
+                {
+                    ZenTimings.Theming.ThemeManager.SetTheme(GetThemeUri(Theme.DarkMintGradient));
+                }
+                catch (Exception fallbackEx)
+                {
+                    Debug.WriteLine(fallbackEx.Message);
+                }
+            }
+
+            try
+            {
+                ThemedWindow.RefreshAllOpenWindows();
+            }
+            catch { }
+        }
+
+        public string Version { get; set; } = new Version(VersionMajor, VersionMinor).ToString();
+
+        private bool _autoRefresh = true;
+        public bool AutoRefresh
+        {
+            get => _autoRefresh;
+            set
+            {
+                if (_autoRefresh != value)
+                {
+                    _autoRefresh = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AutoRefresh)));
+                }
+            }
+        }
+
+        private int _autoRefreshInterval = 2000;
+        public int AutoRefreshInterval
+        {
+            get => _autoRefreshInterval;
+            set
+            {
+                if (_autoRefreshInterval != value)
+                {
+                    _autoRefreshInterval = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AutoRefreshInterval)));
+                }
+            }
+        }
+        /// <summary>
+        /// 界面语言代码（如 zh-CN、en-US）。留空表示跟随系统语言自动选择，
+        /// 首次探测后会把结果写回设置。
+        /// </summary>
+        public string Language { get; set; } = "";
+
+        public bool AdvancedMode { get; set; } = true;
+        public Theme AppTheme { get; set; } = Theme.DarkMintGradient;
+        public ScreenshotType ScreenshotMode { get; set; } = ScreenshotType.Window;
+        public string ScreenshotSaveLocation { get; set; } = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Screenshots");
+        public bool CheckForUpdates { get; set; } = true;
+#if BETA
+        public ReleaseChannel UpdateReleaseChannel { get; set; } = ReleaseChannel.Any;
+#else
+        public ReleaseChannel UpdateReleaseChannel { get; set; } = ReleaseChannel.Stable;
+#endif
+
+        /// <summary>
+        /// Migration only: reads the old on/off beta setting from settings files written before
+        /// <see cref="UpdateReleaseChannel"/> existed (on maps to Any, off to Release). Never written back.
+        /// </summary>
+        [Browsable(false)]
+        public bool? ParticipateInBetaUpdates
+        {
+            get => null;
+            set
+            {
+                if (value.HasValue)
+                    UpdateReleaseChannel = value.Value ? ReleaseChannel.Any : ReleaseChannel.Stable;
+            }
+        }
+
+        public bool ShouldSerializeParticipateInBetaUpdates() => false;
+        public string UpdaterSkippedVersion { get; set; } = "";
+        public string DriverUpdateLastSkippedVersion { get; set; } = "";
+        public string UpdaterRemindLaterAt { get; set; } = "";
+        public bool MinimizeToTray { get; set; }
+        public bool SaveWindowPosition { get; set; } = true;
+        public bool EnableWindowSnapping { get; set; } = true;
+        public string WindowSnapStates { get; set; } = "";
+        public bool AutostartWithWindows { get; set; }
+        public int AutostartDelaySeconds { get; set; } = 12;
+        public bool StartMinimized { get; set; }
+        public bool AutoUninstallDriver { get; set; } = true;
+        public int AutoUninstallDriverNotificationLevel { get; set; } = (int)NotificationLevel.All;
+        public double WindowLeft { get; set; } = -1;
+        public double WindowTop { get; set; } = -1;
+        public double SysInfoWindowLeft { get; set; } = -1;
+        public double SysInfoWindowTop { get; set; } = -1;
+        public double SysInfoWindowWidth { get; set; }
+        public double SysInfoWindowHeight { get; set; }
+        public double SensorsWindowLeft { get; set; } = -1;
+        public double SensorsWindowTop { get; set; } = -1;
+        public double SensorsWindowWidth { get; set; }
+        public double SensorsWindowHeight { get; set; }
+        public double AdvancedTimingsWindowLeft { get; set; } = -1;
+        public double AdvancedTimingsWindowTop { get; set; } = -1;
+        public double AdvancedTimingsWindowWidth { get; set; }
+        public double AdvancedTimingsWindowHeight { get; set; }
+        public string NotifiedChangelog { get; set; } = "";
+        public bool SingleInstance { get; set; } = true;
+        public bool AutoOpenTelemetry { get; set; } = false;
+        public bool ShowUclkRatio { get; set; } = false;
+        public bool FirstStart { get; set; } = true;
+        public int CornerRadius { get; set; } = 0;
+        public ImpedanceTableSource ImpedanceTableSrc { get; set; } = ImpedanceTableSource.APOB;
+        public VoltageSensorSource VsocSensorSource { get; set; } = VoltageSensorSource.Auto;
+        public VoltageSensorSource VddioSensorSource { get; set; } = VoltageSensorSource.Auto;
+        public VoltageSensorSource VmiscSensorSource { get; set; } = VoltageSensorSource.Auto;
+
+        public string GetWindowSnapTarget(string windowId)
+        {
+            if (string.IsNullOrWhiteSpace(windowId) || string.IsNullOrWhiteSpace(WindowSnapStates))
+                return null;
+
+            foreach (var entry in WindowSnapStates.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = entry.Split(new[] { '=' }, 2);
+                if (parts.Length == 2 && string.Equals(parts[0], windowId, StringComparison.OrdinalIgnoreCase))
+                    return string.IsNullOrWhiteSpace(parts[1]) ? null : parts[1];
+            }
+
+            return null;
+        }
+
+        public void SetWindowSnapTarget(string windowId, string targetId)
+        {
+            if (string.IsNullOrWhiteSpace(windowId))
+                return;
+
+            var entries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(WindowSnapStates))
+            {
+                foreach (var entry in WindowSnapStates.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var parts = entry.Split(new[] { '=' }, 2);
+                    if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+                        entries[parts[0]] = parts[1];
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(targetId))
+                entries.Remove(windowId);
+            else
+                entries[windowId] = targetId;
+
+            WindowSnapStates = string.Join(";", entries.Select(x => $"{x.Key}={x.Value}"));
+        }
+    }
+}

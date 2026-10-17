@@ -1,0 +1,523 @@
+﻿<local:ThemedWindow
+    x:Name="RootWindow"
+    xmlns:local="clr-namespace:ZenTimings"
+    x:Class="ZenTimings.Windows.SensorsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:theming="clr-namespace:ZenTimings.Theming"
+    xmlns:windows="clr-namespace:ZenTimings.Windows"
+    xmlns:controls="clr-namespace:ZenTimings.Controls"
+    xmlns:converters="clr-namespace:ZenTimings.Converters"
+    mc:Ignorable="d"
+    Title="{DynamicResource Loc_Sensors_Title}"
+    SnapIdentifier="SensorsWindow"
+    Height="500"
+    Width="400"
+    MinWidth="386"
+    MinHeight="280"
+    WindowStartupLocation="CenterOwner"
+    BorderThickness="1"
+    UseLayoutRounding="True"
+    Style="{DynamicResource WindowStyles}"
+    Loaded="Window_Loaded"
+    Closing="Window_Closing">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <windows:WidthOffsetConverter x:Key="WidthOffset" />
+        <windows:SectionVisibilityConverter x:Key="SectionVisibility" />
+        <windows:PixelToGridLengthConverter x:Key="PixelToGridLength" />
+        <windows:PixelToDataGridLengthConverter x:Key="PixelToDataGridLength" />
+        <windows:TotalColumnWidthConverter x:Key="TotalColumnWidth" />
+        <windows:ColumnLayout x:Key="ColumnLayout" />
+        <SolidColorBrush x:Key="ThermalAlarmHighBrush"     Color="{DynamicResource {x:Static theming:ThemeColors.WarningColor}}"/>
+        <SolidColorBrush x:Key="ThermalAlarmCriticalBrush" Color="{DynamicResource {x:Static theming:ThemeColors.ErrorColor}}"/>
+        <!-- Sensor type icons are defined in Themes/AppIcons.xaml -->
+
+        <Style x:Key="SensorIconStyle" TargetType="{x:Type Path}">
+            <Setter Property="Width" Value="11"/>
+            <Setter Property="Height" Value="11"/>
+            <Setter Property="Stretch" Value="Uniform"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Fill" Value="{DynamicResource TextColor}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Data" Value="{StaticResource IconGeneric}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IconKind}" Value="{x:Static windows:SensorIconKind.Voltage}">
+                    <Setter Property="Data" Value="{StaticResource IconVoltage}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IconKind}" Value="{x:Static windows:SensorIconKind.Temperature}">
+                    <Setter Property="Data" Value="{StaticResource IconTemperature}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IconKind}" Value="{x:Static windows:SensorIconKind.Power}">
+                    <Setter Property="Data" Value="{StaticResource IconPower}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IconKind}" Value="{x:Static windows:SensorIconKind.Fan}">
+                    <Setter Property="Data" Value="{StaticResource IconFan}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="MenuIconStyle" TargetType="{x:Type controls:AppIcon}">
+            <Setter Property="IconWidth" Value="12"/>
+            <Setter Property="IconHeight" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Fill" Value="{DynamicResource TextColor}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+        </Style>
+
+        <DataTemplate x:Key="SensorNameCellTemplate">
+            <StackPanel Orientation="Horizontal">
+                <Path Style="{StaticResource SensorIconStyle}"/>
+                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextColor}" Padding="3,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <Style x:Key="LabelStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static theming:ThemeBrushes.ForegroundBrush}}"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ValueStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <!-- CURRENT column -->
+        <Style x:Key="TelemetryCurrentValueCellStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextColor}"/>
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentAlarmLevel}" Value="{x:Static windows:ThermalAlarmLevel.High}">
+                    <Setter Property="Foreground" Value="{StaticResource ThermalAlarmHighBrush}"/>
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding CurrentAlarmLevel}" Value="{x:Static windows:ThermalAlarmLevel.CriticalHigh}">
+                    <Setter Property="Foreground" Value="{StaticResource ThermalAlarmCriticalBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- MIN column -->
+        <Style x:Key="TelemetryMinValueCellStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding MinAlarmLevel}" Value="{x:Static windows:ThermalAlarmLevel.High}">
+                    <Setter Property="Foreground" Value="{StaticResource ThermalAlarmHighBrush}"/>
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding MinAlarmLevel}" Value="{x:Static windows:ThermalAlarmLevel.CriticalHigh}">
+                    <Setter Property="Foreground" Value="{StaticResource ThermalAlarmCriticalBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- MAX column -->
+        <Style x:Key="TelemetryMaxValueCellStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding MaxAlarmLevel}" Value="{x:Static windows:ThermalAlarmLevel.High}">
+                    <Setter Property="Foreground" Value="{StaticResource ThermalAlarmHighBrush}"/>
+                </DataTrigger>
+
+                <DataTrigger Binding="{Binding MaxAlarmLevel}" Value="{x:Static windows:ThermalAlarmLevel.CriticalHigh}">
+                    <Setter Property="Foreground" Value="{StaticResource ThermalAlarmCriticalBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- AVERAGE column (temporary: no alarm coloring yet) -->
+        <Style x:Key="TelemetryAverageValueCellStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+
+        <!--
+            One section template for every group shown in this window - a memory module or a
+            SuperIO/SVI3 chip group. The only structural difference between them is the module-info
+            block, gated on HasModuleInfo (true only for a ModuleViewModel). Each section's own
+            DataGrid has its column headers hidden (HeadersVisibility="None") - the single header row
+            above the scrollable list of sections (see the Grid below) is the only header shown, and
+            every section's columns are bound to the same shared, user-resizable widths as that row,
+            so the whole window reads as one table with one header.
+        -->
+        <DataTemplate x:Key="SensorSectionTemplate">
+            <GroupBox x:Name="SectionGroupBox"
+                      Style="{StaticResource SectionGroupBoxStyle}">
+                <GroupBox.Visibility>
+                    <!-- A module section is always shown; a chip group section only once it has a telemetry item. -->
+                    <MultiBinding Converter="{StaticResource SectionVisibility}">
+                        <Binding Path="HasModuleInfo"/>
+                        <Binding Path="TelemetryItems.Count"/>
+                    </MultiBinding>
+                </GroupBox.Visibility>
+                <GroupBox.Header>
+                    <!-- Sized from the viewport, not the section itself: the section's width follows its content, so binding to it would only ever grow. -->
+                    <Grid Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}, Converter={StaticResource WidthOffset}}" MinHeight="22">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton Grid.Column="0"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                      Style="{StaticResource SectionToggleStyle}"
+                                      HorizontalContentAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Header}" Style="{StaticResource SectionHeaderTextStyle}"/>
+                                <TextBlock Text="{Binding HiddenDisplay}"
+                                           Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="10"
+                                           FontFamily="Consolas"
+                                           Foreground="{DynamicResource {x:Static theming:ThemeBrushes.ForegroundBrush}}"
+                                           Opacity="0.5"/>
+                            </StackPanel>
+                        </ToggleButton>
+                        <Button Grid.Column="1"
+                                Style="{DynamicResource IconButtonStyle}"
+                                ToolTip="{DynamicResource Loc_Sensors_ToggleModuleInfo}"
+                                Margin="0,0,2,0"
+                                Visibility="{Binding HasModuleInfo, Converter={StaticResource BoolToVis}}"
+                                Click="ToggleModuleInfo_Click">
+                            <controls:AppIcon Kind="IconInfo" IconWidth="11" IconHeight="11" Fill="{DynamicResource TextColor}">
+                                <controls:AppIcon.Style>
+                                    <Style TargetType="controls:AppIcon">
+                                        <Setter Property="Opacity" Value="1"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ShowModuleInfo}" Value="False">
+                                                <Setter Property="Opacity" Value="0.45"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </controls:AppIcon.Style>
+                            </controls:AppIcon>
+                        </Button>
+                        <Button Grid.Column="2"
+                                Style="{DynamicResource IconButtonStyle}"
+                                ToolTip="{DynamicResource Loc_Common_CopyToClipboard}"
+                                Click="CopyGroup_Click">
+                            <controls:AppIcon Kind="IconCopy" IconWidth="11" IconHeight="11" Fill="{DynamicResource TextColor}" />
+                        </Button>
+                    </Grid>
+                </GroupBox.Header>
+                <StackPanel Margin="4, 2, 4, 2" Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+
+                    <!--
+                        Module info
+                        group. Its Width tracks the total of the 5 shared column widths (see
+                        TotalColumnWidthConverter), so it ends exactly where the DataGrid's last column
+                        does and only changes size when a column is resized - not when the window itself
+                        is resized.
+                    -->
+                    <Grid Margin="0,2,0,3" Visibility="{Binding IsModuleInfoVisible, Converter={StaticResource BoolToVis}}">
+                    <!-- Star column capped at the column total: the block never asks for more width than the section has, so toggling it can't widen the layout. -->
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*">
+                            <ColumnDefinition.MaxWidth>
+                                <MultiBinding Converter="{StaticResource TotalColumnWidth}">
+                                    <Binding Path="SensorColumnWidth" Source="{StaticResource ColumnLayout}"/>
+                                    <Binding Path="CurrentColumnWidth" Source="{StaticResource ColumnLayout}"/>
+                                    <Binding Path="MinColumnWidth" Source="{StaticResource ColumnLayout}"/>
+                                    <Binding Path="MaxColumnWidth" Source="{StaticResource ColumnLayout}"/>
+                                    <Binding Path="AverageColumnWidth" Source="{StaticResource ColumnLayout}"/>
+                                </MultiBinding>
+                            </ColumnDefinition.MaxWidth>
+                        </ColumnDefinition>
+                    </Grid.ColumnDefinitions>
+                    <Border Background="{DynamicResource SensorModuleInfoBackground}"
+                            BorderBrush="{DynamicResource SensorModuleInfoBorder}"
+                            BorderThickness="1"
+                            CornerRadius="3" Padding="6,4">
+                        <!--
+                            Two independent groups (manufacturer/capacity/DRAM on the left, part
+                            number/rank/PMIC on the right), each its own Auto-sized 2-column Grid so its
+                            own label/value pairs stay snug regardless of the other group's content
+                            width. The outer Grid splits the box exactly in half ("*"/"*") and each group
+                            is left-aligned within its half, so the right group starts at a fixed,
+                            consistent point (the box's midpoint) instead of hugging the left group's
+                            text or stretching across the whole remaining width.
+                        -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition MinHeight="18"/>
+                                    <RowDefinition MinHeight="18"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding Manufacturer}" Style="{StaticResource ValueStyle}" Margin="0,2,0,0"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Loc_Common_Capacity}" Style="{StaticResource LabelStyle}" Margin="0,2,8,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Capacity}" Style="{StaticResource ValueStyle}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="DRAM" Style="{StaticResource LabelStyle}" Margin="0,2,8,0"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MemoryChip}" Style="{StaticResource ValueStyle}" Margin="0,2,0,0"/>
+                            </Grid>
+
+                            <Grid Grid.Column="2" HorizontalAlignment="Left">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition MinHeight="18"/>
+                                    <RowDefinition MinHeight="18"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding PartNumber}" Style="{StaticResource ValueStyle}" Margin="0,2,0,0"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Loc_Sensors_Rank}" Style="{StaticResource LabelStyle}" Margin="0,2,8,0"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Rank}" Style="{StaticResource ValueStyle}"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="PMIC" Style="{StaticResource LabelStyle}" Margin="0,2,8,0"
+                                       Visibility="{Binding HasPmic, Converter={StaticResource BoolToVis}}"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Style="{StaticResource ValueStyle}" Margin="0,2,0,0"
+                                       Visibility="{Binding HasPmic, Converter={StaticResource BoolToVis}}">
+                                <Run Text="{Binding PmicVendor}"/>
+                                <Run Text="{DynamicResource Loc_Sensors_Revision}"/>
+                                <Run Text="{Binding PmicRevision}"/>
+                                </TextBlock>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                    </Grid>
+
+                    <!-- Telemetry DataGrid - no header of its own; see the shared header row above the list -->
+                    <DataGrid ItemsSource="{Binding TelemetryItems}"
+                          AutoGenerateColumns="False"
+                          GridLinesVisibility="None"
+                          HeadersVisibility="None"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          CanUserResizeRows="False"
+                          CanUserReorderColumns="False"
+                          CanUserResizeColumns="False"
+                          CanUserSortColumns="False"
+                          Focusable="False"
+                          IsReadOnly="True"
+                          FontSize="11"
+                          RowHeight="18"
+                          SelectionMode="Extended"
+                          SelectionUnit="FullRow"
+                          PreviewMouseWheel="DataGrid_PreviewMouseWheel"
+                          Visibility="{Binding HasTelemetry, Converter={StaticResource BoolToVis}}">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="{DynamicResource Loc_Sensors_HideSelected}" Click="HideSensors_Click">
+                                    <MenuItem.Icon>
+                                        <controls:AppIcon Kind="IconHide" Style="{StaticResource MenuIconStyle}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{DynamicResource Loc_Sensors_HideZero}" Click="HideZeroValueSensors_Click">
+                                    <MenuItem.Icon>
+                                        <controls:AppIcon Kind="IconBlock" Style="{StaticResource MenuIconStyle}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{DynamicResource Loc_Sensors_HideFans}" Click="HideAllFans_Click">
+                                    <MenuItem.Icon>
+                                        <controls:AppIcon Kind="IconFan" Style="{StaticResource MenuIconStyle}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{DynamicResource Loc_Sensors_HideTemps}" Click="HideAllTemperatures_Click">
+                                    <MenuItem.Icon>
+                                        <controls:AppIcon Kind="IconTemperature" Style="{StaticResource MenuIconStyle}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="{DynamicResource Loc_Sensors_HideVolts}" Click="HideAllVoltages_Click">
+                                    <MenuItem.Icon>
+                                        <controls:AppIcon Kind="IconVoltage" Style="{StaticResource MenuIconStyle}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                        <DataGrid.RowStyle>
+                            <Style TargetType="{x:Type DataGridRow}" BasedOn="{StaticResource SectionRowStyle}">
+                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="SensorRow_PreviewMouseLeftButtonDown"/>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn CellTemplate="{StaticResource SensorNameCellTemplate}"
+                                                     Width="{Binding SensorColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToDataGridLength}}"
+                                                     MinWidth="60"/>
+
+                            <DataGridTextColumn Binding="{Binding Current}"
+                                                 Width="{Binding CurrentColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToDataGridLength}}"
+                                                 MinWidth="40">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource TelemetryCurrentValueCellStyle}"/>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Binding="{Binding Min}"
+                                                 Width="{Binding MinColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToDataGridLength}}"
+                                                 MinWidth="40">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource TelemetryMinValueCellStyle}"/>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Binding="{Binding Max}"
+                                                 Width="{Binding MaxColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToDataGridLength}}"
+                                                 MinWidth="40">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource TelemetryMaxValueCellStyle}"/>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Binding="{Binding Average}"
+                                                 Width="{Binding AverageColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToDataGridLength}}"
+                                                 MinWidth="40">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="{x:Type TextBlock}" BasedOn="{StaticResource TelemetryAverageValueCellStyle}"/>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- No telemetry message - can only show for a module section; a chip group section stays
+                         hidden entirely (via GroupBox.Visibility above) whenever it has no telemetry items -->
+                    <TextBlock Text="{DynamicResource Loc_Sensors_NoTelemetry}"
+                           Margin="2"
+                           FontStyle="Italic"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextColor}"
+                           Opacity="0.6"
+                           Visibility="{Binding HasNoTelemetry, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+            </GroupBox>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!--
+            The one column-header row for every section below - drag a splitter here to resize a
+            column; every section's DataGrid columns share the same bound widths (see
+            SensorSectionTemplate above), so they all move together. Widths are plain pixel values
+            (not "*"), so a resize sticks and does not get rescaled when the window itself is resized.
+
+            Real DataGridColumnHeader controls are used for the labels (not plain TextBlocks) so they
+            pick up the app's normal themed header chrome (background/border) automatically, the same
+            as every other DataGrid header in the app - a standalone DataGridColumnHeader renders with
+            that theme without needing to be hosted inside an actual DataGrid. Each header's own
+            separator is turned off; the GridSplitters are the actual (and only) divider line, styled
+            with the same brush as the app's other section dividers so they're clearly visible.
+        -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SensorColumnHeaderBackground}"
+                BorderBrush="{DynamicResource SensorColumnHeaderBorder}"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{Binding SensorColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToGridLength}, Mode=TwoWay}" MinWidth="60"/>
+                    <ColumnDefinition Width="3"/>
+                    <ColumnDefinition Width="{Binding CurrentColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToGridLength}, Mode=TwoWay}" MinWidth="40"/>
+                    <ColumnDefinition Width="3"/>
+                    <ColumnDefinition Width="{Binding MinColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToGridLength}, Mode=TwoWay}" MinWidth="40"/>
+                    <ColumnDefinition Width="3"/>
+                    <ColumnDefinition Width="{Binding MaxColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToGridLength}, Mode=TwoWay}" MinWidth="40"/>
+                    <ColumnDefinition Width="3"/>
+                    <ColumnDefinition Width="{Binding AverageColumnWidth, Source={StaticResource ColumnLayout}, Converter={StaticResource PixelToGridLength}, Mode=TwoWay}" MinWidth="40"/>
+                </Grid.ColumnDefinitions>
+
+                <DataGridColumnHeader Grid.Column="0" Content="{DynamicResource Loc_Sensors_Sensor}" HorizontalContentAlignment="Left" Style="{StaticResource SectionColumnHeaderStyle}"/>
+                <GridSplitter Grid.Column="1" Style="{StaticResource SectionColumnSplitterStyle}" Tag="Sensor" PreviewMouseLeftButtonDown="ColumnSplitter_PreviewMouseLeftButtonDown"/>
+
+                <DataGridColumnHeader Grid.Column="2" Content="{DynamicResource Loc_Sensors_Current}" HorizontalContentAlignment="Right" Style="{StaticResource SectionColumnHeaderStyle}"/>
+                <GridSplitter Grid.Column="3" Style="{StaticResource SectionColumnSplitterStyle}" Tag="Current" PreviewMouseLeftButtonDown="ColumnSplitter_PreviewMouseLeftButtonDown"/>
+
+                <DataGridColumnHeader Grid.Column="4" Content="{DynamicResource Loc_Sensors_Min}" HorizontalContentAlignment="Right" Style="{StaticResource SectionColumnHeaderStyle}"/>
+                <GridSplitter Grid.Column="5" Style="{StaticResource SectionColumnSplitterStyle}" Tag="Min" PreviewMouseLeftButtonDown="ColumnSplitter_PreviewMouseLeftButtonDown"/>
+
+                <DataGridColumnHeader Grid.Column="6" Content="{DynamicResource Loc_Sensors_Max}" HorizontalContentAlignment="Right" Style="{StaticResource SectionColumnHeaderStyle}"/>
+                <GridSplitter Grid.Column="7" Style="{StaticResource SectionColumnSplitterStyle}" Tag="Max" PreviewMouseLeftButtonDown="ColumnSplitter_PreviewMouseLeftButtonDown"/>
+
+                <DataGridColumnHeader Grid.Column="8" Content="{DynamicResource Loc_Sensors_Average}" HorizontalContentAlignment="Right" Style="{StaticResource SectionColumnHeaderStyle}"/>
+            </Grid>
+        </Border>
+
+        <!-- Module grid — all DIMMs visible simultaneously -->
+        <ScrollViewer x:Name="SectionsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0" Margin="0">
+            <StackPanel>
+            <ItemsControl x:Name="ModulesContainer" ItemTemplate="{StaticResource SensorSectionTemplate}"/>
+
+            <!-- Sensor groups — SuperIO sensors grouped per chip -->
+            <ItemsControl x:Name="SensorGroupsContainer" ItemTemplate="{StaticResource SensorSectionTemplate}"/>
+
+            <!-- Shown when no supported sensors were found on this system -->
+            <TextBlock x:Name="NoSensorsMessage"
+                       Text="{DynamicResource Loc_Sensors_NoSensors}"
+                       Margin="4,12"
+                       FontStyle="Italic"
+                       FontSize="12"
+                       HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextColor}"
+                       Opacity="0.6"
+                       Visibility="Collapsed"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Style="{DynamicResource Separator}"/>
+
+        <Border Grid.Row="3" Style="{DynamicResource BottomPanelStyles}">
+            <DockPanel>
+                <TextBlock x:Name="StatusText" Text="{DynamicResource Loc_Common_Ready}" VerticalAlignment="Center" Foreground="{DynamicResource TextColor}" FontSize="11"/>
+                <Button x:Name="BtnSensorSettings" DockPanel.Dock="Right"
+                    HorizontalAlignment="Right"
+                    Width="24" Height="24" Padding="0"
+                    Margin="6,0,0,0"
+                    ToolTip="{DynamicResource Loc_Sensors_Manage}"
+                    Click="BtnSensorSettings_Click">
+                    <controls:AppIcon Kind="IconSettings" IconWidth="12" IconHeight="12" Fill="{DynamicResource TextColor}"/>
+                </Button>
+                <Button x:Name="BtnResetStats" DockPanel.Dock="Right"
+                    HorizontalAlignment="Right"
+                    Content="{DynamicResource Loc_Sensors_ResetStats}" Width="80" Height="24"
+                    Click="BtnResetStats_Click"/>
+                <ToggleButton x:Name="ToggleAutoOpen"
+                              DockPanel.Dock="Right"
+                              Content="{DynamicResource Loc_Sensors_AutoOpen}"
+                              Style="{DynamicResource {x:Static theming:ThemeStyles.ToggleSwitch}}"
+                              HorizontalAlignment="Right"
+                              Margin="0,0,12,0"
+                              FontSize="11"
+                              Click="ToggleAutoOpen_Click"/>
+            </DockPanel>
+        </Border>
+    </Grid>
+</local:ThemedWindow>

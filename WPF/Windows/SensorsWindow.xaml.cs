@@ -1,0 +1,1452 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Threading;
+using ZenStates.Core.Hardware;
+using ZenStates.Core.Hardware.DRAM;
+using ZenStates.Core.Hardware.DRAM.DDR4.Spd;
+using ZenStates.Core.Hardware.DRAM.DDR4.Thermal;
+using ZenStates.Core.Hardware.DRAM.DDR5.Pmic;
+using ZenStates.Core.Hardware.DRAM.DDR5.Spd;
+using ZenStates.Core.Hardware.DRAM.DDR5.Thermal;
+using ZenTimings.Common;
+using ZenTimings.Settings;
+using ZenTimings.Utils;
+using ZenTimings.ViewModels;
+using ZenTimings.Localization;
+
+namespace ZenTimings.Windows
+{
+    public class WidthOffsetConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            if (value is double width)
+            {
+                double offset = 16;
+                if (parameter != null && double.TryParse(parameter.ToString(), out double parsedOffset))
+                    offset = parsedOffset;
+
+                return Math.Max(0, width - offset);
+            }
+
+            return value;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    // Drives the shared section GroupBox's visibility: a module section (HasModuleInfo) is always
+    // shown; a chip group section is shown only once it has at least one telemetry item.
+    public class SectionVisibilityConverter : System.Windows.Data.IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            bool hasModuleInfo = values.Length > 0 && values[0] is bool moduleInfo && moduleInfo;
+            int telemetryCount = values.Length > 1 && values[1] is int count ? count : 0;
+            return hasModuleInfo || telemetryCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    // One-way: a shared column-width value (pixels) -> the fixed-pixel GridLength used by the single,
+    // always-visible column-header row above the sections (see SensorsWindow.xaml). That row's
+    // GridSplitters write back through this same binding (TwoWay), so a drag there updates the shared
+    // value directly.
+    public class PixelToGridLengthConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            double pixels = value is double d ? d : 100;
+            return new GridLength(pixels, GridUnitType.Pixel);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            return value is GridLength length ? length.Value : System.Windows.Data.Binding.DoNothing;
+        }
+    }
+
+    // One-way: a shared column-width value (pixels) -> the fixed-pixel DataGridLength each section's
+    // Sensor DataGrid columns use. Those columns never resize themselves (their header row is hidden -
+    // the single shared header row above the sections is what the user actually drags), so this only
+    // ever needs to read the shared value, never write it back.
+    public class PixelToDataGridLengthConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            double pixels = value is double d ? d : 100;
+            return new System.Windows.Controls.DataGridLength(pixels, System.Windows.Controls.DataGridLengthUnitType.Pixel);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    // Sums the 5 shared column widths into the total width of a section's Sensor DataGrid (its columns
+    // sit edge-to-edge with no gaps), so the module-info block can be bound to that same total width and
+    // end exactly where the last column does. Only a column resize (dragging a splitter) changes this -
+    // not a window resize, since the widths behind it are fixed pixel values.
+    public class TotalColumnWidthConverter : System.Windows.Data.IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            double total = 0;
+            foreach (object value in values)
+            {
+                if (value is double pixels)
+                    total += pixels;
+            }
+            return total;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    // Shared column widths (pixels) for the single header row and every section's Sensor DataGrid.
+    // Declared once as a Window.Resources instance (x:Key="ColumnLayout") and referenced from XAML via
+    // Binding.Source={StaticResource ColumnLayout} - NOT ElementName. DataGridColumn is not part of the
+    // visual/logical tree, so it cannot resolve an ElementName binding reaching outside its DataTemplate;
+    // StaticResource lookup, by contrast, walks the resource-dictionary chain and works from anywhere in
+    // the window, including inside a nested DataTemplate. Plain fixed-pixel values, not "*" star sizing,
+    // so a manual resize sticks and does not get rescaled when the window itself is resized; dragging one
+    // of the header row's GridSplitters is the only thing that changes these.
+    public class ColumnLayout : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private double sensorColumnWidth = 120.0;
+        private double currentColumnWidth = 64.0;
+        private double minColumnWidth = 54.0;
+        private double maxColumnWidth = 54.0;
+        private double averageColumnWidth = 64.0;
+
+        public double SensorColumnWidth
+        {
+            get => sensorColumnWidth;
+            set { sensorColumnWidth = value; OnPropertyChanged(nameof(SensorColumnWidth)); }
+        }
+
+        public double CurrentColumnWidth
+        {
+            get => currentColumnWidth;
+            set { currentColumnWidth = value; OnPropertyChanged(nameof(CurrentColumnWidth)); }
+        }
+
+        public double MinColumnWidth
+        {
+            get => minColumnWidth;
+            set { minColumnWidth = value; OnPropertyChanged(nameof(MinColumnWidth)); }
+        }
+
+        public double MaxColumnWidth
+        {
+            get => maxColumnWidth;
+            set { maxColumnWidth = value; OnPropertyChanged(nameof(MaxColumnWidth)); }
+        }
+
+        public double AverageColumnWidth
+        {
+            get => averageColumnWidth;
+            set { averageColumnWidth = value; OnPropertyChanged(nameof(AverageColumnWidth)); }
+        }
+
+        private void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+    }
+
+    public partial class SensorsWindow : ThemedWindow
+    {
+        private readonly DispatcherTimer updateTimer;
+        private readonly DispatcherTimer _uptimeStatusTimer;
+        private DateTime _windowOpenedAt;
+        private readonly MemoryConfig memoryConfig;
+        private readonly ObservableCollection<ModuleViewModel> moduleViewModels = new ObservableCollection<ModuleViewModel>();
+        private readonly ObservableCollection<SensorGroupViewModel> sensorGroupViewModels = new ObservableCollection<SensorGroupViewModel>();
+        private readonly List<SensorTelemetryLink> sensorTelemetryLinks = new List<SensorTelemetryLink>();
+        private bool _isRefreshing;
+        // Set in Window_Closing so async continuations don't touch the UI or restart timers after close.
+        private bool _isClosed;
+
+        // The single shared column-width object declared as a Window resource (see SensorsWindow.xaml);
+        // referenced from code-behind to load/save it against settings_sensors.xml.
+        private ColumnLayout Columns => (ColumnLayout)Resources["ColumnLayout"];
+
+        public SensorsWindow()
+        {
+            InitializeComponent();
+            memoryConfig = CpuSingleton.Instance.memoryConfig;
+
+            updateTimer = new DispatcherTimer();
+            updateTimer.Tick += RefreshTimer_Tick;
+
+            _uptimeStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _uptimeStatusTimer.Tick += UptimeTimer_Tick;
+
+            SensorSettings sensorSettings = SensorSettings.Instance;
+            Columns.SensorColumnWidth = sensorSettings.SensorColumnWidth;
+            Columns.CurrentColumnWidth = sensorSettings.CurrentColumnWidth;
+            Columns.MinColumnWidth = sensorSettings.MinColumnWidth;
+            Columns.MaxColumnWidth = sensorSettings.MaxColumnWidth;
+            Columns.AverageColumnWidth = sensorSettings.AverageColumnWidth;
+        }
+
+        // Double-clicking a header divider auto-fits the column to its left to the widest currently
+        // displayed content in that column, across every section - like double-clicking a column border
+        // in Windows Explorer. Each GridSplitter's Tag (set in XAML) says which shared column it controls.
+        //
+        // Hooked to PreviewMouseLeftButtonDown rather than the more obvious MouseDoubleClick: GridSplitter
+        // derives from Thumb, which captures the mouse and starts its own drag handling on
+        // MouseLeftButtonDown without invoking Control's base handling, so Control.MouseDoubleClick never
+        // actually fires on it. MouseButtonEventArgs.ClickCount is set by the mouse device itself before
+        // routing, independent of that, so checking it here works reliably.
+        private void ColumnSplitter_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ClickCount != 2)
+                return;
+
+            if (!(sender is System.Windows.Controls.GridSplitter splitter) || !(splitter.Tag is string column))
+                return;
+
+            var typeface = new System.Windows.Media.Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
+            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip;
+
+            double Measure(string text)
+            {
+                if (string.IsNullOrEmpty(text))
+                    return 0;
+
+                var formatted = new System.Windows.Media.FormattedText(
+                    text,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    typeface,
+                    11.0,
+                    System.Windows.Media.Brushes.Black,
+                    dpi);
+
+                return formatted.WidthIncludingTrailingWhitespace;
+            }
+
+            IEnumerable<TelemetryItemViewModel> AllTelemetryItems()
+            {
+                foreach (ModuleViewModel module in moduleViewModels)
+                    foreach (TelemetryItemViewModel item in module.TelemetryItems)
+                        yield return item;
+
+                foreach (SensorGroupViewModel group in sensorGroupViewModels)
+                    foreach (TelemetryItemViewModel item in group.TelemetryItems)
+                        yield return item;
+            }
+
+            double contentWidth;
+            double headerWidth;
+            double minWidth;
+
+            switch (column)
+            {
+                case "Sensor":
+                    // Icon (11) + its right margin (4) + the cell text's own padding (3 left, 3 right)
+                    contentWidth = AllTelemetryItems().Select(i => Measure(i.Name)).DefaultIfEmpty(0).Max() + 11 + 4 + 6;
+                    headerWidth = Measure("Sensor") + 16;
+                    minWidth = 60;
+                    break;
+                case "Current":
+                    contentWidth = AllTelemetryItems().Select(i => Measure(i.Current)).DefaultIfEmpty(0).Max() + 6;
+                    headerWidth = Measure("Current") + 16;
+                    minWidth = 40;
+                    break;
+                case "Min":
+                    contentWidth = AllTelemetryItems().Select(i => Measure(i.Min)).DefaultIfEmpty(0).Max() + 6;
+                    headerWidth = Measure("Min") + 16;
+                    minWidth = 40;
+                    break;
+                case "Max":
+                    contentWidth = AllTelemetryItems().Select(i => Measure(i.Max)).DefaultIfEmpty(0).Max() + 6;
+                    headerWidth = Measure("Max") + 16;
+                    minWidth = 40;
+                    break;
+                default:
+                    return;
+            }
+
+            // +8px buffer for DataGridCell's own default padding/chrome, which can't be measured directly here.
+            double idealWidth = Math.Max(Math.Max(contentWidth + 8, headerWidth), minWidth);
+
+            switch (column)
+            {
+                case "Sensor": Columns.SensorColumnWidth = idealWidth; break;
+                case "Current": Columns.CurrentColumnWidth = idealWidth; break;
+                case "Min": Columns.MinColumnWidth = idealWidth; break;
+                case "Max": Columns.MaxColumnWidth = idealWidth; break;
+            }
+
+            e.Handled = true;
+        }
+
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            ModulesContainer.ItemsSource = moduleViewModels;
+            SensorGroupsContainer.ItemsSource = sensorGroupViewModels;
+            AppSettings.Instance.PropertyChanged += AppSettings_PropertyChanged;
+            ToggleAutoOpen.IsChecked = AppSettings.Instance.AutoOpenTelemetry;
+            await LoadModulesDataAsync();
+            if (_isClosed)
+                return;
+            LoadSensorGroups();
+            UpdateNoSensorsMessage();
+            ConfigureAutoRefresh();
+        }
+
+        // Shows a message when neither memory module telemetry nor SuperIO sensors are available.
+        private void UpdateNoSensorsMessage()
+        {
+            bool hasAnySensors = moduleViewModels.Count > 0 || sensorGroupViewModels.Count > 0;
+            NoSensorsMessage.Visibility = hasAnySensors ? Visibility.Collapsed : Visibility.Visible;
+            if (!hasAnySensors)
+                StatusText.Text = "No sensors available on this system";
+        }
+
+        private void UptimeTimer_Tick(object sender, EventArgs e)
+        {
+            StatusText.Text = "Running: " + (DateTime.Now - _windowOpenedAt).ToString(@"hh\:mm\:ss");
+        }
+
+        private void AppSettings_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(AppSettings.AutoRefreshInterval) && updateTimer.IsEnabled)
+            {
+                updateTimer.Interval = TimeSpan.FromMilliseconds(AppSettings.Instance.AutoRefreshInterval);
+            }
+            else if (e.PropertyName == nameof(AppSettings.AutoRefresh))
+            {
+                ConfigureAutoRefresh();
+            }
+        }
+
+        private void ConfigureAutoRefresh()
+        {
+            if (AppSettings.Instance.AutoRefresh)
+                StartAutoRefresh();
+            else
+                StopAutoRefresh();
+        }
+
+        private void StartAutoRefresh()
+        {
+            _windowOpenedAt = DateTime.Now;
+            _uptimeStatusTimer.Start();
+            UptimeTimer_Tick(null, null);
+            int interval = AppSettings.Instance.AutoRefreshInterval;
+            updateTimer.Interval = TimeSpan.FromMilliseconds(interval);
+            updateTimer.Start();
+        }
+
+        private void StopAutoRefresh()
+        {
+            updateTimer.Stop();
+            _uptimeStatusTimer.Stop();
+            _windowOpenedAt = DateTime.Now;
+            StatusText.Text = "Auto-refresh off";
+        }
+
+        private async Task LoadModulesDataAsync()
+        {
+            if (memoryConfig == null)
+            {
+                return;
+            }
+
+            // Block periodic refresh while the initial SMBUS load is in progress.
+            _isRefreshing = true;
+            StatusText.Text = "Loading...";
+
+            Tuple<List<ModuleViewModel>, string> result = null;
+            Exception loadError = null;
+
+            try
+            {
+                result = await Task.Run(() => BuildModuleViewModels());
+            }
+            catch (Exception ex)
+            {
+                loadError = ex;
+            }
+
+            if (_isClosed)
+                return;
+
+            moduleViewModels.Clear();
+            if (loadError != null)
+            {
+                StatusText.Text = $"Error loading modules: {loadError.Message}";
+                MessageBox.Show(Loc.Format("Loc_Msg_ModuleDataFailed", loadError.Message), Loc.Get("Loc_Error_Title"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            else
+            {
+                foreach (var vm in result.Item1)
+                {
+                    ApplySectionState(vm);
+                    moduleViewModels.Add(vm);
+                }
+                StatusText.Text = result.Item2;
+            }
+
+            _isRefreshing = false;
+        }
+
+        // Restores the saved collapsed state and module-info visibility, and saves any later change.
+        private void ApplySectionState(SensorGroupViewModel vm)
+        {
+            var settings = SensorSettings.Instance;
+            vm.IsExpanded = !settings.CollapsedSections.Contains(vm.SectionKey);
+            vm.ShowModuleInfo = !settings.HiddenModuleInfo.Contains(vm.SectionKey);
+            vm.PropertyChanged -= Section_PropertyChanged;
+            vm.PropertyChanged += Section_PropertyChanged;
+        }
+
+        private void Section_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(SensorGroupViewModel.IsExpanded) || !(sender is SensorGroupViewModel vm))
+                return;
+
+            var collapsed = SensorSettings.Instance.CollapsedSections;
+            bool changed = vm.IsExpanded ? collapsed.Remove(vm.SectionKey) : !collapsed.Contains(vm.SectionKey);
+            if (!vm.IsExpanded && changed)
+                collapsed.Add(vm.SectionKey);
+            if (changed)
+                SensorSettings.Instance.Save();
+        }
+
+        private void ToggleModuleInfo_Click(object sender, RoutedEventArgs e)
+        {
+            if (!((sender as FrameworkElement)?.DataContext is SensorGroupViewModel vm))
+                return;
+
+            var settings = SensorSettings.Instance;
+            vm.ShowModuleInfo = !vm.ShowModuleInfo;
+            settings.HiddenModuleInfo.Remove(vm.SectionKey);
+            if (!vm.ShowModuleInfo)
+                settings.HiddenModuleInfo.Add(vm.SectionKey);
+            settings.Save();
+
+            // Remeasure from the top so the scrollbar and widths settle to the new content size.
+            (SectionsScroll.Content as UIElement)?.InvalidateMeasure();
+            SectionsScroll.InvalidateMeasure();
+        }
+
+        // Runs entirely on a thread-pool thread
+        private Tuple<List<ModuleViewModel>, string> BuildModuleViewModels()
+        {
+            var vms = new List<ModuleViewModel>();
+            Dictionary<byte, Ddr5SpdInfo> spdInfo = null;
+            string warning = null;
+
+            try
+            {
+                var info = memoryConfig.SpdInfo;
+                if (info != null && info.Count > 0)
+                    spdInfo = info;
+            }
+            catch (Exception ex)
+            {
+                warning = $"Warning: Could not read SPD data - {ex.Message}";
+            }
+
+            if (spdInfo != null && spdInfo.Count > 0)
+            {
+                int slotIndex = 0;
+                foreach (var spdEntry in spdInfo)
+                {
+                    var vm = new ModuleViewModel
+                    {
+                        SectionKey = $"DIMM {slotIndex}",
+                        PartNumber = spdEntry.Value.ModulePartNumber ?? "N/A",
+                        Manufacturer = spdEntry.Value.ModuleManufacturer ?? "N/A",
+                        Capacity = spdEntry.Value.TotalCapacityMB > 0 ? $"{spdEntry.Value.TotalCapacityMB} MB" : "N/A",
+                        Rank = spdEntry.Value.RanksPerChannel > 0 ? $"{spdEntry.Value.RanksPerChannel}R" : "N/A",
+                        MemoryChip = !string.IsNullOrEmpty(spdEntry.Value.DramManufacturer)
+                            ? $"{spdEntry.Value.DramManufacturer} {VendorUtils.GetDramDieName(spdEntry.Value.DramManufacturer, spdEntry.Value.DramStepping)}"
+                            : "N/A"
+                    };
+
+                    MemoryModule module = null;
+                    if (memoryConfig.Modules != null && slotIndex < memoryConfig.Modules.Count)
+                    {
+                        module = memoryConfig.Modules[slotIndex];
+                        var logoName = VendorUtils.GetMemoryModuleLogo(module);
+                        if (!string.IsNullOrEmpty(logoName))
+                        {
+                            vm.LogoResourceName = logoName;
+                            vm.HasLogo = true;
+                        }
+                    }
+
+                    if (spdEntry.Value.ThermalData != null && spdEntry.Value.ThermalData.IsValid)
+                        InitializeThermalTelemetry(vm, spdEntry.Value.ThermalData, slotIndex);
+
+                    if (spdEntry.Value.Pmic != null && spdEntry.Value.Pmic.IsValid)
+                    {
+                        vm.HasPmic = true;
+                        vm.PmicVendor = spdEntry.Value.Pmic.VendorName ?? "N/A";
+                        vm.PmicRevision = $"{spdEntry.Value.Pmic.RevisionMajor}.{spdEntry.Value.Pmic.RevisionMinor}";
+                        InitializePmicTelemetry(vm, spdEntry.Value.Pmic, slotIndex);
+                    }
+
+                    var header = new System.Text.StringBuilder($"DIMM {slotIndex}");
+                    if (module != null && !string.IsNullOrEmpty(module.Slot))
+                        header.Append($"  ·  {module.Slot}");
+                    if (spdEntry.Value.Pmic != null && spdEntry.Value.Pmic.IsValid)
+                        header.Append($"  ·  PMIC 0x{spdEntry.Value.Pmic.I2cAddress:X2}");
+                    vm.Header = header.ToString();
+
+                    vms.Add(vm);
+                    slotIndex++;
+                }
+                return Tuple.Create(vms, $"Loaded {vms.Count} module(s)");
+            }
+
+            if (memoryConfig.Modules != null && memoryConfig.Modules.Count > 0)
+            {
+                // DDR4: the module thermal sensors and SPD, in the order of the modules
+                List<Ddr4ThermalData> ddr4Sensors = GetDdr4ThermalSensors();
+                var ddr4Spd = new List<Ddr4SpdInfo>();
+                if (memoryConfig.Ddr4Spd != null)
+                    ddr4Spd.AddRange(memoryConfig.Ddr4Spd.Values);
+                int sensorCount = 0;
+
+                for (int i = 0; i < memoryConfig.Modules.Count; i++)
+                {
+                    var module = memoryConfig.Modules[i];
+                    Ddr4ThermalData sensor = i < ddr4Sensors.Count ? ddr4Sensors[i] : null;
+                    Ddr4SpdInfo spd = i < ddr4Spd.Count ? ddr4Spd[i] : null;
+                    bool hasSpd = spd != null && spd.IsValid;
+                    bool hasSensor = sensor != null && sensor.IsValid && sensor.TempSensorEnabled;
+
+                    var header = string.IsNullOrEmpty(module.Slot)
+                        ? $"DIMM {i}"
+                        : $"DIMM {i}  ·  {module.Slot}";
+                    if (hasSensor)
+                        header += $"  ·  TS 0x{sensor.I2cAddress:X2}";
+                    var vm = new ModuleViewModel
+                    {
+                        SectionKey = $"DIMM {i}",
+                        Header = header,
+                        PartNumber = !string.IsNullOrEmpty(module.PartNumber) ? module.PartNumber
+                            : hasSpd && !string.IsNullOrEmpty(spd.ModulePartNumber) ? spd.ModulePartNumber : "N/A",
+                        Manufacturer = module.Manufacturer ?? "N/A",
+                        Capacity = module.Capacity != null && module.Capacity.SizeInBytes > 0
+                            ? module.Capacity.ToString()
+                            : "N/A",
+                        Rank = module.Rank.ToString(),
+                        MemoryChip = hasSpd && !string.IsNullOrEmpty(spd.DramManufacturer)
+                            ? $"{spd.DramManufacturer}, {spd.DieDensityMbit / 1024} Gb x{spd.DeviceWidthBits}"
+                            : "N/A (no SPD data)",
+                        HasPmic = false
+                    };
+
+                    var logoName = VendorUtils.GetMemoryModuleLogo(module);
+                    if (!string.IsNullOrEmpty(logoName))
+                    {
+                        vm.LogoResourceName = logoName;
+                        vm.HasLogo = true;
+                    }
+
+                    if (hasSensor)
+                    {
+                        InitializeDdr4ThermalTelemetry(vm, sensor, i);
+                        sensorCount++;
+                    }
+
+                    vms.Add(vm);
+                }
+
+                if (sensorCount > 0)
+                    return Tuple.Create(vms, $"Loaded {vms.Count} module(s) - {sensorCount} thermal sensor(s)");
+
+                return Tuple.Create(vms, $"Loaded {vms.Count} module(s) - Limited info (no SPD/PMIC data available)");
+            }
+
+            return Tuple.Create(vms, warning ?? "No memory modules detected");
+        }
+
+        private void InitializePmicTelemetry(ModuleViewModel vm, Ddr5Pmic pmicData, int slotIndex)
+        {
+            vm.HasTelemetry = true;
+
+            var hiddenSensors = SensorSettings.Instance.HiddenSensors;
+            int hiddenCount = 0;
+
+            void AddPmicItem(string name, double value, string unit)
+            {
+                var key = GetPmicSensorKey(slotIndex, name);
+                if (hiddenSensors.Contains(key))
+                {
+                    hiddenCount++;
+                    vm.HiddenKeys.Add(key);
+                    return;
+                }
+
+                vm.TelemetryItems.Add(new TelemetryItemViewModel(name, value, unit) { GroupKey = key });
+            }
+
+            // VDD (SWA)
+            AddPmicItem("VDD (SWA)", pmicData.SwaAdcMv / 1000.0, "V");
+
+            // VDDQ (SWB)
+            AddPmicItem("VDDQ (SWB)", pmicData.SwbAdcMv / 1000.0, "V");
+
+            // VPP (SWC)
+            AddPmicItem("VPP (SWC)", pmicData.SwcAdcMv / 1000.0, "V");
+
+            // VIN Bulk
+            AddPmicItem("VIN Bulk", pmicData.VinBulkMv / 1000.0, "V");
+
+            // 1.8V LDO
+            AddPmicItem("VOUT 1.8V", pmicData.Vout18AdcMv / 1000.0, "V");
+
+            // 1.0V LDO
+            AddPmicItem("VOUT 1.0V", pmicData.Vout10AdcMv / 1000.0, "V");
+
+            // PMIC Temperature
+            if (!string.IsNullOrEmpty(pmicData.PmicTemperature))
+            {
+                if (double.TryParse(pmicData.PmicTemperature.Replace("°C", "").Trim(), out double tempValue))
+                {
+                    AddPmicItem("PMIC Temp", tempValue, "°C");
+                }
+            }
+
+            // Total Power
+            // HwInfo seems to set the telemetry to report total power mode on first launch
+            // Disable for now, current mode has been fixed and should be close enough. Hwinfo will still switch it.
+            //if (!(pmicData.TelemetryReportsPower && pmicData.TelemetryReportsTotalPower))
+            //{
+            //    (pmicData as Pmic5100)?.SetTotalPowerMode(true);
+            //}
+
+            AddPmicItem("Total Power", pmicData.TotalW, "W");
+
+            // High Temperature Warning
+            var pmicHighTempKey = GetPmicSensorKey(slotIndex, "PMIC High Temp");
+            if (hiddenSensors.Contains(pmicHighTempKey))
+            {
+                hiddenCount++;
+                vm.HiddenKeys.Add(pmicHighTempKey);
+            }
+            else
+            {
+                var pmicHighTempItem = new TelemetryItemViewModel("PMIC High Temp", pmicData.HighTemperatureWarning) { GroupKey = pmicHighTempKey };
+                pmicHighTempItem.UpdateThermalAlarm(pmicData.CriticalTemperatureShutdown, pmicData.HighTemperatureWarning);
+                vm.TelemetryItems.Add(pmicHighTempItem);
+            }
+
+            vm.HiddenCount = hiddenCount;
+        }
+
+        private static string GetPmicSensorKey(int slotIndex, string sensorName) => $"PMIC|{slotIndex}|{sensorName}";
+
+        private void InitializeThermalTelemetry(ModuleViewModel vm, Ddr5ThermalData thermalData, int slotIndex)
+        {
+            vm.HasTelemetry = true;
+
+            var key = GetPmicSensorKey(slotIndex, "SPD Hub Temp");
+            if (SensorSettings.Instance.HiddenSensors.Contains(key))
+            {
+                vm.HiddenCount++;
+                vm.HiddenKeys.Add(key);
+                return;
+            }
+
+            var item = new TelemetryItemViewModel("SPD Hub Temp", thermalData.TemperatureC, "°C") { GroupKey = key };
+            item.UpdateThermalAlarm(thermalData.AlarmCritHigh, thermalData.AlarmHigh);
+            vm.TelemetryItems.Add(item);
+        }
+
+        // DDR4 module thermal sensors in the order of the modules; an entry is null for a module without one.
+        private List<Ddr4ThermalData> GetDdr4ThermalSensors()
+        {
+            var list = new List<Ddr4ThermalData>();
+            Dictionary<byte, Ddr4ThermalData> sensors = memoryConfig?.Ddr4ThermalSensors;
+            if (sensors != null)
+                list.AddRange(sensors.Values);
+            return list;
+        }
+
+        private const string Ddr4ThermalSensorName = "DIMM Temp";
+
+        private void InitializeDdr4ThermalTelemetry(ModuleViewModel vm, Ddr4ThermalData thermalData, int slotIndex)
+        {
+            vm.HasTelemetry = true;
+
+            var key = GetPmicSensorKey(slotIndex, Ddr4ThermalSensorName);
+            if (SensorSettings.Instance.HiddenSensors.Contains(key))
+            {
+                vm.HiddenCount++;
+                vm.HiddenKeys.Add(key);
+                return;
+            }
+
+            var item = new TelemetryItemViewModel(Ddr4ThermalSensorName, thermalData.TemperatureC, "°C") { GroupKey = key };
+            item.UpdateThermalAlarm(thermalData.AlarmCritHigh, thermalData.AlarmHigh);
+            vm.TelemetryItems.Add(item);
+        }
+
+        private void UpdateDdr4ThermalTelemetry(ModuleViewModel vm, Ddr4ThermalData thermalData)
+        {
+            var item = vm.TelemetryItems.FirstOrDefault(i => i.Name == Ddr4ThermalSensorName);
+            if (item != null)
+            {
+                item.UpdateValue(thermalData.TemperatureC);
+                item.UpdateThermalAlarm(thermalData.AlarmCritHigh, thermalData.AlarmHigh);
+            }
+        }
+
+        internal void RefreshTelemetryGroups()
+        {
+            if (_isRefreshing || memoryConfig == null)
+                return;
+
+            _isRefreshing = true;
+            try
+            {
+                var spdInfo = memoryConfig.SpdInfo;
+
+                if (spdInfo != null && spdInfo.Count > 0)
+                {
+                    int index = 0;
+                    foreach (var spdEntry in spdInfo)
+                    {
+                        if (index >= moduleViewModels.Count)
+                            break;
+
+                        var vm = moduleViewModels[index];
+                        if (spdEntry.Value.Pmic != null && spdEntry.Value.Pmic.IsValid)
+                            UpdatePmicTelemetry(vm, spdEntry.Value.Pmic);
+
+                        if (spdEntry.Value.ThermalData != null && spdEntry.Value.ThermalData.IsValid)
+                            UpdateThermalTelemetry(vm, spdEntry.Value.ThermalData);
+
+                        index++;
+                    }
+                }
+                else
+                {
+                    List<Ddr4ThermalData> ddr4Sensors = GetDdr4ThermalSensors();
+                    for (int i = 0; i < moduleViewModels.Count && i < ddr4Sensors.Count; i++)
+                    {
+                        Ddr4ThermalData sensor = ddr4Sensors[i];
+                        if (sensor != null && sensor.IsValid && sensor.TempSensorEnabled)
+                            UpdateDdr4ThermalTelemetry(moduleViewModels[i], sensor);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Error refreshing telemetry: {ex.Message}";
+            }
+            finally
+            {
+                _isRefreshing = false;
+            }
+        }
+
+        private void UpdatePmicTelemetry(ModuleViewModel vm, Ddr5Pmic pmicData)
+        {
+            UpdateTelemetryItem(vm, "VDD (SWA)", pmicData.SwaAdcMv / 1000.0);
+            UpdateTelemetryItem(vm, "VDDQ (SWB)", pmicData.SwbAdcMv / 1000.0);
+            UpdateTelemetryItem(vm, "VPP (SWC)", pmicData.SwcAdcMv / 1000.0);
+            UpdateTelemetryItem(vm, "VIN Bulk", pmicData.VinBulkMv / 1000.0);
+            UpdateTelemetryItem(vm, "VOUT 1.8V", pmicData.Vout18AdcMv / 1000.0);
+            UpdateTelemetryItem(vm, "VOUT 1.0V", pmicData.Vout10AdcMv / 1000.0);
+
+            if (!string.IsNullOrEmpty(pmicData.PmicTemperature))
+            {
+                if (double.TryParse(pmicData.PmicTemperature.Replace("°C", "").Trim(), out double tempValue))
+                {
+                    UpdateTelemetryItem(vm, "PMIC Temp", tempValue);
+                }
+            }
+
+            //if (pmicData.TelemetryReportsTotalPower)
+            {
+                UpdateTelemetryItem(vm, "Total Power", pmicData.TotalW);
+            }
+
+            UpdateTelemetryItem(vm, "PMIC High Temp", pmicData.HighTemperatureWarning);
+            vm.TelemetryItems.FirstOrDefault(i => i.Name == "PMIC High Temp")
+                ?.UpdateThermalAlarm(pmicData.CriticalTemperatureShutdown, pmicData.HighTemperatureWarning);
+        }
+
+        private void UpdateThermalTelemetry(ModuleViewModel vm, Ddr5ThermalData thermalData)
+        {
+            var item = vm.TelemetryItems.FirstOrDefault(i => i.Name == "SPD Hub Temp");
+            if (item != null)
+            {
+                item.UpdateValue(thermalData.TemperatureC);
+                item.UpdateThermalAlarm(thermalData.AlarmCritHigh, thermalData.AlarmHigh);
+            }
+        }
+
+        private void UpdateTelemetryItem(ModuleViewModel vm, string name, double value)
+        {
+            var item = vm.TelemetryItems.FirstOrDefault(i => i.Name == name);
+            item?.UpdateValue(value);
+        }
+
+        private void UpdateTelemetryItem(ModuleViewModel vm, string name, bool value)
+        {
+            var item = vm.TelemetryItems.FirstOrDefault(i => i.Name == name);
+            item?.UpdateValue(value ? 1.0 : 0.0);
+        }
+
+        private void RefreshTimer_Tick(object sender, EventArgs e)
+        {
+            RefreshTelemetryGroups();
+            RefreshSensorGroups();
+        }
+
+        private void CopyGroup_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is System.Windows.Controls.Button button))
+                return;
+
+            var text = new System.Text.StringBuilder();
+            IEnumerable<TelemetryItemViewModel> items;
+
+            if (button.DataContext is ModuleViewModel module)
+            {
+                text.AppendLine(module.Header);
+                text.AppendLine($"{module.Manufacturer}\t{module.PartNumber}");
+                text.AppendLine($"Capacity\t{module.Capacity}\tRank\t{module.Rank}");
+                text.AppendLine($"DRAM\t{module.MemoryChip}");
+                if (module.HasPmic)
+                    text.AppendLine($"PMIC\t{module.PmicVendor} rev {module.PmicRevision}");
+                items = module.TelemetryItems;
+            }
+            else if (button.DataContext is SensorGroupViewModel group)
+            {
+                text.AppendLine(group.Header);
+                items = group.TelemetryItems;
+            }
+            else
+            {
+                return;
+            }
+
+            text.AppendLine("Sensor\tCurrent\tMin\tMax\tAverage");
+            foreach (TelemetryItemViewModel item in items)
+                text.AppendLine($"{item.Name}\t{item.Current}\t{item.Min}\t{item.Max}\t{item.Average}");
+
+            ClipboardUtils.Copy(text.ToString(), button);
+        }
+
+        private void BtnResetStats_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var module in moduleViewModels)
+            {
+                foreach (var item in module.TelemetryItems)
+                {
+                    item.ResetStats();
+                }
+            }
+
+            foreach (var group in sensorGroupViewModels)
+            {
+                foreach (var item in group.TelemetryItems)
+                {
+                    item.ResetStats();
+                }
+            }
+
+            _windowOpenedAt = DateTime.Now;
+            UptimeTimer_Tick(null, null);
+        }
+
+        private void LoadSensorGroups()
+        {
+            sensorGroupViewModels.Clear();
+            sensorTelemetryLinks.Clear();
+
+            var systemInfo = CpuSingleton.Instance?.systemInfo;
+            if (systemInfo == null)
+                return;
+
+            var hiddenSensors = SensorSettings.Instance.HiddenSensors;
+
+            foreach (var group in systemInfo.SensorGroups)
+            {
+                var groupVm = new SensorGroupViewModel { Header = group.Name };
+                int hiddenCount = 0;
+
+                foreach (var sensor in group.Sensors)
+                {
+                    var key = GetSensorKey(group.Name, sensor.Name);
+                    if (hiddenSensors.Contains(key))
+                    {
+                        hiddenCount++;
+                        groupVm.HiddenKeys.Add(key);
+                        continue;
+                    }
+
+                    var unit = GetSensorUnit(sensor.SensorType);
+                    var initialValue = GetSensorDisplayValue(sensor);
+                    var item = new TelemetryItemViewModel(sensor.Name, initialValue, unit) { GroupKey = key };
+                    groupVm.TelemetryItems.Add(item);
+                    sensorTelemetryLinks.Add(new SensorTelemetryLink(sensor, item));
+                }
+
+                groupVm.HiddenCount = hiddenCount;
+
+                if (groupVm.TelemetryItems.Count > 0 || hiddenCount > 0)
+                {
+                    ApplySectionState(groupVm);
+                    sensorGroupViewModels.Add(groupVm);
+                }
+            }
+        }
+
+        private static string GetSensorKey(string chipName, string sensorName) => $"{chipName}|{sensorName}";
+
+        // Hides the sensors currently selected in the DataGrid the context menu was opened on.
+        private void HideSensors_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is System.Windows.Controls.MenuItem menuItem) ||
+                !(menuItem.Parent is System.Windows.Controls.ContextMenu contextMenu) ||
+                !(contextMenu.PlacementTarget is System.Windows.Controls.DataGrid dataGrid))
+                return;
+
+            var selectedItems = dataGrid.SelectedItems.OfType<TelemetryItemViewModel>().ToList();
+            if (selectedItems.Count == 0)
+                return;
+
+            var hiddenSensors = SensorSettings.Instance.HiddenSensors;
+            bool changed = false;
+
+            foreach (var item in selectedItems)
+            {
+                if (string.IsNullOrEmpty(item.GroupKey))
+                    continue;
+
+                if (!hiddenSensors.Contains(item.GroupKey))
+                {
+                    hiddenSensors.Add(item.GroupKey);
+                    changed = true;
+                }
+
+                foreach (var group in sensorGroupViewModels)
+                {
+                    if (group.TelemetryItems.Remove(item))
+                    {
+                        group.HiddenCount++;
+                        group.HiddenKeys.Add(item.GroupKey);
+                        break;
+                    }
+                }
+
+                foreach (var module in moduleViewModels)
+                {
+                    if (module.TelemetryItems.Remove(item))
+                    {
+                        module.HiddenCount++;
+                        module.HiddenKeys.Add(item.GroupKey);
+                        break;
+                    }
+                }
+
+                var link = sensorTelemetryLinks.FirstOrDefault(l => l.Item == item);
+                if (link != null)
+                    sensorTelemetryLinks.Remove(link);
+            }
+
+            if (changed)
+                SensorSettings.Instance.Save();
+
+            UpdateNoSensorsMessage();
+        }
+
+        // Hides every sensor in the DataGrid the context menu was opened on whose current, min and max values are all zero.
+        private void HideZeroValueSensors_Click(object sender, RoutedEventArgs e)
+        {
+            HideSensorsMatching(sender, i => i.IsAllZero);
+        }
+
+        // Hides every fan sensor in the DataGrid the context menu was opened on.
+        private void HideAllFans_Click(object sender, RoutedEventArgs e)
+        {
+            HideSensorsMatching(sender, i => i.IconKind == SensorIconKind.Fan);
+        }
+
+        // Hides every temperature sensor in the DataGrid the context menu was opened on.
+        private void HideAllTemperatures_Click(object sender, RoutedEventArgs e)
+        {
+            HideSensorsMatching(sender, i => i.IconKind == SensorIconKind.Temperature);
+        }
+
+        // Hides every voltage sensor in the DataGrid the context menu was opened on.
+        private void HideAllVoltages_Click(object sender, RoutedEventArgs e)
+        {
+            HideSensorsMatching(sender, i => i.IconKind == SensorIconKind.Voltage);
+        }
+
+        // Hides every sensor in the DataGrid the context menu was opened on that matches the given predicate.
+        private void HideSensorsMatching(object sender, Func<TelemetryItemViewModel, bool> predicate)
+        {
+            if (!(sender is System.Windows.Controls.MenuItem menuItem) ||
+                !(menuItem.Parent is System.Windows.Controls.ContextMenu contextMenu) ||
+                !(contextMenu.PlacementTarget is System.Windows.Controls.DataGrid dataGrid))
+                return;
+
+            var matchingItems = dataGrid.ItemsSource?.OfType<TelemetryItemViewModel>()
+                .Where(predicate)
+                .ToList();
+
+            if (matchingItems == null || matchingItems.Count == 0)
+                return;
+
+            var hiddenSensors = SensorSettings.Instance.HiddenSensors;
+            bool changed = false;
+
+            foreach (var item in matchingItems)
+            {
+                if (string.IsNullOrEmpty(item.GroupKey))
+                    continue;
+
+                if (!hiddenSensors.Contains(item.GroupKey))
+                {
+                    hiddenSensors.Add(item.GroupKey);
+                    changed = true;
+                }
+
+                foreach (var group in sensorGroupViewModels)
+                {
+                    if (group.TelemetryItems.Remove(item))
+                    {
+                        group.HiddenCount++;
+                        group.HiddenKeys.Add(item.GroupKey);
+                        break;
+                    }
+                }
+
+                foreach (var module in moduleViewModels)
+                {
+                    if (module.TelemetryItems.Remove(item))
+                    {
+                        module.HiddenCount++;
+                        module.HiddenKeys.Add(item.GroupKey);
+                        break;
+                    }
+                }
+
+                var link = sensorTelemetryLinks.FirstOrDefault(l => l.Item == item);
+                if (link != null)
+                    sensorTelemetryLinks.Remove(link);
+            }
+
+            if (changed)
+                SensorSettings.Instance.Save();
+
+            UpdateNoSensorsMessage();
+        }
+
+        // Opens the global sensor visibility settings dialog listing every known sensor,
+        // grouped by module/chip, with checkboxes to show/hide them.
+        private async void BtnSensorSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var groups = BuildSensorSettingsCatalog();
+            var dialog = new SensorSettingsWindow(groups) { Owner = this };
+
+            if (dialog.ShowDialog() == true)
+            {
+                var hiddenSensors = SensorSettings.Instance.HiddenSensors;
+                bool changed = false;
+
+                foreach (var group in groups)
+                {
+                    foreach (var entryItem in group.Entries)
+                    {
+                        bool isHidden = !entryItem.IsVisible;
+                        bool alreadyHidden = hiddenSensors.Contains(entryItem.Key);
+
+                        if (isHidden && !alreadyHidden)
+                        {
+                            hiddenSensors.Add(entryItem.Key);
+                            changed = true;
+                        }
+                        else if (!isHidden && alreadyHidden)
+                        {
+                            hiddenSensors.Remove(entryItem.Key);
+                            changed = true;
+                        }
+                    }
+                }
+
+                if (changed)
+                    SensorSettings.Instance.Save();
+
+                LoadSensorGroups();
+                UpdateSensorGroupsAfterSettingsChange();
+                RefreshSensorGroups();
+                await UpdateModulesAfterSettingsChangeAsync();
+                if (_isClosed)
+                    return;
+                UpdateNoSensorsMessage();
+            }
+        }
+
+        private void UpdateSensorGroupsAfterSettingsChange()
+        {
+            var systemInfo = CpuSingleton.Instance?.systemInfo;
+            if (systemInfo == null)
+                return;
+
+            var hiddenSensors = SensorSettings.Instance.HiddenSensors;
+
+            foreach (var group in systemInfo.SensorGroups)
+            {
+                var groupVm = sensorGroupViewModels.FirstOrDefault(g => g.Header == group.Name);
+                if (groupVm == null)
+                {
+                    groupVm = new SensorGroupViewModel { Header = group.Name };
+                    ApplySectionState(groupVm);
+                    sensorGroupViewModels.Add(groupVm);
+                }
+
+                // Drop items that just became hidden.
+                for (int i = groupVm.TelemetryItems.Count - 1; i >= 0; i--)
+                {
+                    var existingItem = groupVm.TelemetryItems[i];
+                    if (hiddenSensors.Contains(existingItem.GroupKey))
+                    {
+                        groupVm.TelemetryItems.RemoveAt(i);
+                        var link = sensorTelemetryLinks.FirstOrDefault(l => l.Item == existingItem);
+                        if (link != null)
+                            sensorTelemetryLinks.Remove(link);
+                    }
+                }
+
+                groupVm.HiddenKeys.Clear();
+                int hiddenCount = 0;
+
+                foreach (var sensor in group.Sensors)
+                {
+                    var key = GetSensorKey(group.Name, sensor.Name);
+                    if (hiddenSensors.Contains(key))
+                    {
+                        hiddenCount++;
+                        groupVm.HiddenKeys.Add(key);
+                        continue;
+                    }
+
+                    // Already visible - keep the existing item so its recorded stats are preserved.
+                    if (groupVm.TelemetryItems.Any(i => i.GroupKey == key))
+                        continue;
+
+                    var unit = GetSensorUnit(sensor.SensorType);
+                    var initialValue = GetSensorDisplayValue(sensor);
+                    var newItem = new TelemetryItemViewModel(sensor.Name, initialValue, unit) { GroupKey = key };
+                    groupVm.TelemetryItems.Add(newItem);
+                    sensorTelemetryLinks.Add(new SensorTelemetryLink(sensor, newItem));
+                }
+
+                groupVm.HiddenCount = hiddenCount;
+            }
+        }
+
+        // Adds/removes module telemetry items to reflect the current hidden set, without recreating
+        // unaffected items (which would reset their recorded stats).
+        private async Task UpdateModulesAfterSettingsChangeAsync()
+        {
+            if (memoryConfig == null)
+                return;
+
+            _isRefreshing = true;
+
+            Tuple<List<ModuleViewModel>, string> result = null;
+            Exception loadError = null;
+
+            try
+            {
+                result = await Task.Run(() => BuildModuleViewModels());
+            }
+            catch (Exception ex)
+            {
+                loadError = ex;
+            }
+
+            if (_isClosed)
+                return;
+
+            if (loadError != null)
+            {
+                StatusText.Text = $"Error loading modules: {loadError.Message}";
+                _isRefreshing = false;
+                return;
+            }
+
+            var freshList = result.Item1;
+
+            if (moduleViewModels.Count != freshList.Count)
+            {
+                // Module count changed (unexpected here) - fall back to a full replace.
+                moduleViewModels.Clear();
+                foreach (var vm in freshList)
+                {
+                    ApplySectionState(vm);
+                    moduleViewModels.Add(vm);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < freshList.Count; i++)
+                    MergeModuleViewModel(moduleViewModels[i], freshList[i]);
+            }
+
+            StatusText.Text = result.Item2;
+            _isRefreshing = false;
+        }
+
+        // Merges freshly-built module telemetry into the existing view model in place, keeping the
+        // existing TelemetryItemViewModel instances for sensors that remain visible so their
+        // recorded min/max/average values are not reset.
+        private static void MergeModuleViewModel(ModuleViewModel existing, ModuleViewModel fresh)
+        {
+            existing.HiddenCount = fresh.HiddenCount;
+            existing.HiddenKeys.Clear();
+            existing.HiddenKeys.AddRange(fresh.HiddenKeys);
+
+            for (int i = existing.TelemetryItems.Count - 1; i >= 0; i--)
+            {
+                var key = existing.TelemetryItems[i].GroupKey;
+                if (fresh.TelemetryItems.All(f => f.GroupKey != key))
+                    existing.TelemetryItems.RemoveAt(i);
+            }
+
+            foreach (var freshItem in fresh.TelemetryItems)
+            {
+                if (existing.TelemetryItems.All(e => e.GroupKey != freshItem.GroupKey))
+                    existing.TelemetryItems.Add(freshItem);
+            }
+        }
+
+        // Builds the list of every known sensor (visible or hidden), grouped by module/chip,
+        // for display in the sensor settings dialog.
+        private List<SensorSettingsGroup> BuildSensorSettingsCatalog()
+        {
+            var groups = new List<SensorSettingsGroup>();
+
+            foreach (var module in moduleViewModels)
+            {
+                var group = new SensorSettingsGroup { Header = module.Header };
+
+                foreach (var item in module.TelemetryItems)
+                {
+                    if (!string.IsNullOrEmpty(item.GroupKey))
+                        group.Entries.Add(new SensorSettingsEntry(item.GroupKey, item.Name, true));
+                }
+
+                foreach (var key in module.HiddenKeys)
+                    group.Entries.Add(new SensorSettingsEntry(key, GetSensorNameFromKey(key), false));
+
+                if (group.Entries.Count > 0)
+                    groups.Add(group);
+            }
+
+            foreach (var sensorGroup in sensorGroupViewModels)
+            {
+                var group = new SensorSettingsGroup { Header = sensorGroup.Header };
+
+                foreach (var item in sensorGroup.TelemetryItems)
+                {
+                    if (!string.IsNullOrEmpty(item.GroupKey))
+                        group.Entries.Add(new SensorSettingsEntry(item.GroupKey, item.Name, true));
+                }
+
+                foreach (var key in sensorGroup.HiddenKeys)
+                    group.Entries.Add(new SensorSettingsEntry(key, GetSensorNameFromKey(key), false));
+
+                if (group.Entries.Count > 0)
+                    groups.Add(group);
+            }
+
+            return groups;
+        }
+
+        private static string GetSensorNameFromKey(string key)
+        {
+            int idx = key.LastIndexOf('|');
+            return idx >= 0 && idx < key.Length - 1 ? key.Substring(idx + 1) : key;
+        }
+
+        private void RefreshSensorGroups()
+        {
+            var systemInfo = CpuSingleton.Instance?.systemInfo;
+            if (systemInfo == null || sensorTelemetryLinks.Count == 0)
+                return;
+
+            try
+            {
+                //systemInfo.UpdateSensors();
+
+                foreach (var link in sensorTelemetryLinks)
+                {
+                    link.Item.UpdateValue(GetSensorDisplayValue(link.Sensor));
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Error refreshing sensors: {ex.Message}";
+            }
+        }
+
+        private static double GetSensorDisplayValue(Sensor sensor)
+        {
+            var value = sensor.Value ?? 0;
+            return sensor.SensorType == SensorType.Fan ? Math.Round(value) : value;
+        }
+
+        private static string GetSensorUnit(SensorType sensorType)
+        {
+            switch (sensorType)
+            {
+                case SensorType.Voltage: return "V";
+                case SensorType.Current: return "A";
+                case SensorType.Power: return "W";
+                case SensorType.Clock: return "MHz";
+                case SensorType.Temperature: return "°C";
+                case SensorType.Load: return "%";
+                case SensorType.Frequency: return "Hz";
+                case SensorType.Fan: return "RPM";
+                case SensorType.Flow: return "L/h";
+                case SensorType.Control: return "%";
+                case SensorType.Level: return "%";
+                case SensorType.Factor: return "";
+                case SensorType.Data: return "GB";
+                case SensorType.SmallData: return "MB";
+                case SensorType.Throughput: return "B/s";
+                case SensorType.TimeSpan: return "s";
+                case SensorType.Timing: return "ns";
+                case SensorType.Energy: return "mWh";
+                case SensorType.Noise: return "dBA";
+                case SensorType.Conductivity: return "µS/cm";
+                case SensorType.Humidity: return "%";
+                default: return "";
+            }
+        }
+
+        private void ToggleAutoOpen_Click(object sender, RoutedEventArgs e)
+        {
+            AppSettings.Instance.AutoOpenTelemetry = ToggleAutoOpen.IsChecked == true;
+            AppSettings.Instance.Save();
+        }
+
+        private void DataGrid_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (e.Handled)
+                return;
+
+            e.Handled = true;
+
+            var eventArg = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+            {
+                RoutedEvent = MouseWheelEvent,
+                Source = sender
+            };
+
+            if (sender is FrameworkElement element && element.Parent is UIElement parent)
+                parent.RaiseEvent(eventArg);
+        }
+
+        // Clicking an already-selected row deselects it instead of leaving it selected.
+        private void SensorRow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (!(sender is System.Windows.Controls.DataGridRow row))
+                return;
+
+            if (row.IsSelected && Keyboard.Modifiers == ModifierKeys.None)
+            {
+                row.IsSelected = false;
+                e.Handled = true;
+            }
+        }
+
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            _isClosed = true;
+            updateTimer?.Stop();
+            _uptimeStatusTimer?.Stop();
+            AppSettings.Instance.PropertyChanged -= AppSettings_PropertyChanged;
+            sensorTelemetryLinks.Clear();
+            moduleViewModels.Clear();
+            sensorGroupViewModels.Clear();
+
+            // Save column widths, so a manual resize survives the next time this window is opened
+            SensorSettings sensorSettings = SensorSettings.Instance;
+            sensorSettings.SensorColumnWidth = Columns.SensorColumnWidth;
+            sensorSettings.CurrentColumnWidth = Columns.CurrentColumnWidth;
+            sensorSettings.MinColumnWidth = Columns.MinColumnWidth;
+            sensorSettings.MaxColumnWidth = Columns.MaxColumnWidth;
+            sensorSettings.AverageColumnWidth = Columns.AverageColumnWidth;
+            sensorSettings.Save();
+
+            AppSettings appSettings = AppSettings.Instance;
+
+            // Save window position and size if enabled
+            if (appSettings.SaveWindowPosition)
+            {
+                appSettings.SensorsWindowLeft = Left;
+                appSettings.SensorsWindowTop = Top;
+                appSettings.SensorsWindowHeight = Height;
+                appSettings.SensorsWindowWidth = Width;
+                appSettings.Save();
+            }
+        }
+    }
+
+    public class SensorTelemetryLink
+    {
+        public SensorTelemetryLink(Sensor sensor, TelemetryItemViewModel item)
+        {
+            Sensor = sensor;
+            Item = item;
+        }
+
+        public Sensor Sensor { get; }
+        public TelemetryItemViewModel Item { get; }
+    }
+
+    public enum ThermalAlarmLevel
+    {
+        None,
+        High,
+        CriticalHigh
+    }
+
+    public enum SensorIconKind
+    {
+        Generic,
+        Voltage,
+        Temperature,
+        Power,
+        Fan
+    }
+}
